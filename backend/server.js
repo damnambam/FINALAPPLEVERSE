@@ -8,17 +8,11 @@ import multer from "multer";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 
+// Import routes and handlers
+import authRoutes from "./routes/authRoutes.js";
+import adminManagementRoutes from "./routes/adminRoutes.js";
 import { handleSignupRequest } from "./signupHandler.js";
-import {
-  Admin,
-  listPendingRequests,
-  listActiveAdmins,
-  listRejectedRequests,
-  approveRequest,
-  rejectRequest,
-  revokeAccess,
-  reinstateRequest,
-} from "./adminHandler.js";
+import { Admin } from "./models/Admin.js";
 
 dotenv.config();
 
@@ -29,19 +23,35 @@ const __dirname = dirname(__filename);
 // Express setup
 const app = express();
 const PORT = process.env.PORT || 5000;
-app.use(express.json());
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 
-// MongoDB connection
+// ========================
+// MIDDLEWARE
+// ========================
+app.use(express.json());
+app.use(cors({ 
+  origin: "http://localhost:3000", 
+  credentials: true 
+}));
+
+// ========================
+// MONGODB CONNECTION (Main DB)
+// ========================
 mongoose
   .connect("mongodb://localhost:27017/appleverse", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("✅ Connected to MongoDB (appleverse)"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+  .then(() => {
+    console.log("✅ Connected to MongoDB (appleverse)");
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err);
+    process.exit(1); // Exit if database connection fails
+  });
 
-// Multer setup for images
+// ========================
+// MULTER SETUP (Image uploads)
+// ========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, "images")),
   filename: (req, file, cb) => {
@@ -52,45 +62,134 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// ----------------------
-// Routes
-// ----------------------
+// ========================
+// ROUTES
+// ========================
 
 // Root
-app.get("/", (req, res) => res.send("🍎 Appleverse API is running!"));
+app.get("/", (req, res) => {
+  res.json({ 
+    message: "🍎 Appleverse API is running!",
+    endpoints: {
+      user_auth: "/api/auth/*",
+      admin_auth: "/api/admin/*"
+    }
+  });
+});
 
-// Signup
-app.post("/signup-request", handleSignupRequest);
+// ========================
+// USER AUTHENTICATION ROUTES (Regular Users)
+// ========================
+app.use("/api/auth", authRoutes);
+
+// ========================
+// ADMIN ROUTES (Admin System)
+// ========================
+
+// Admin signup request (separate from user signup)
+app.post("/api/admin/signup-request", handleSignupRequest);
 
 // Admin login
-app.post("/admin/login", async (req, res) => {
+app.post("/api/admin/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    
+    console.log('🔐 Admin login attempt:', email);
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+
     const admin = await Admin.findOne({ email });
-    if (!admin) return res.status(401).json({ error: "Invalid credentials" });
+    if (!admin) {
+      console.log('❌ Admin not found:', email);
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    if (!admin.isActive) {
+      console.log('❌ Admin account is inactive:', email);
+      return res.status(401).json({ error: "Admin account is inactive" });
+    }
 
     const match = await bcrypt.compare(password, admin.password);
-    if (!match) return res.status(401).json({ error: "Invalid credentials" });
+    if (!match) {
+      console.log('❌ Password mismatch');
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
-    res.json({ token: "fake-jwt-token", message: "Login successful" });
+    // Update last login
+    admin.lastLogin = new Date();
+    await admin.save();
+
+    // Generate a proper token
+    const token = `admin-${admin._id}-${Date.now()}`;
+    
+    console.log('✅ Admin login successful, token generated:', token);
+
+    res.json({ 
+      token: token, 
+      message: "Admin login successful",
+      admin: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role || 'Admin'
+      }
+    });
   } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ error: "Server Error" });
+    console.error("❌ Admin login error:", err);
+    res.status(500).json({ error: "Server Error", details: err.message });
   }
 });
 
-// Admin actions (example routes)
-app.get("/admins/pending", listPendingRequests);
-app.get("/admins/active", listActiveAdmins);
-app.get("/admins/rejected", listRejectedRequests);
+// ========================
+// ADMIN MANAGEMENT ROUTES (Dashboard API)
+// ========================
+app.use("/api/admin", adminManagementRoutes);
 
-app.post("/admins/approve", approveRequest);
-app.post("/admins/reject", rejectRequest);
-app.post("/admins/revoke", revokeAccess);
-app.post("/admins/reinstate", reinstateRequest);
-
-// Serve images
+// ========================
+// STATIC FILES
+// ========================
 app.use("/images", express.static(path.join(__dirname, "images")));
 
-// Start server
-app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+// ========================
+// 404 HANDLER
+// ========================
+app.use((req, res) => {
+  console.log('❌ 404 - Route not found:', req.method, req.url);
+  res.status(404).json({ 
+    success: false,
+    error: "Route not found",
+    path: req.url
+  });
+});
+
+// ========================
+// ERROR HANDLING
+// ========================
+app.use((err, req, res, next) => {
+  console.error("❌ Server Error:", err);
+  res.status(500).json({ 
+    success: false,
+    error: "Internal server error",
+    details: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// ========================
+// START SERVER
+// ========================
+app.listen(PORT, () => {
+  console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📱 User Auth API: http://localhost:${PORT}/api/auth`);
+  console.log(`👨‍💼 Admin Login: http://localhost:${PORT}/api/admin/login`);
+  console.log(`📊 Admin Dashboard API: http://localhost:${PORT}/api/admin/pending-requests`);
+  console.log(`📊 Admin Dashboard API: http://localhost:${PORT}/api/admin/admins\n`);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Promise Rejection:', err);
+  // Close server & exit process
+  process.exit(1);
+});

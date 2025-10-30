@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navigation from './components/Navigation';
 import HeroSection from './components/HeroSection';
 import SearchSection from './components/SearchSection';
@@ -9,10 +9,40 @@ import SearchResults from './components/SearchResults';
 import TemplateCreator from './components/TemplateCreator';
 import TreeScrollPage from './components/TreeScrollPage';
 import AdminDashboard from './components/AdminDashboard';
+import UserDashboard from './pages/UserDashboard';
 import Footer from './components/Footer';
 import CreateApple from './pages/CreateApple';
 import SignupLogin from "./pages/SignupLogin";
 import './App.css';
+
+// Protected Route Component for Admin
+const ProtectedAdminRoute = ({ children }) => {
+  const isAdmin = localStorage.getItem('isAdmin') === 'true';
+  const adminToken = localStorage.getItem('adminToken');
+  
+  console.log('🔒 ProtectedAdminRoute check:', { isAdmin, hasToken: !!adminToken });
+  
+  if (!isAdmin || !adminToken) {
+    console.log('❌ Access denied - redirecting to login');
+    return <Navigate to="/signup-login" replace />;
+  }
+  
+  console.log('✅ Access granted to admin dashboard');
+  return children;
+};
+
+// Protected Route Component for User Dashboard
+const ProtectedUserRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  const user = localStorage.getItem('user');
+  
+  if (!token || !user) {
+    console.log('❌ User not logged in - redirecting to login');
+    return <Navigate to="/signup-login" replace />;
+  }
+  
+  return children;
+};
 
 function App() {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -21,6 +51,25 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Check admin status on mount
+  useEffect(() => {
+    const adminStatus = localStorage.getItem('isAdmin') === 'true';
+    setIsAdmin(adminStatus);
+    console.log('🔐 App mounted, admin status:', adminStatus);
+  }, []);
+
+  // Listen for auth changes
+  useEffect(() => {
+    const handleAuthChange = () => {
+      const adminStatus = localStorage.getItem('isAdmin') === 'true';
+      setIsAdmin(adminStatus);
+      console.log('🔄 Auth changed, admin status:', adminStatus);
+    };
+
+    window.addEventListener('authChange', handleAuthChange);
+    return () => window.removeEventListener('authChange', handleAuthChange);
+  }, []);
 
   // ✅ Mock search data
   const mockResults = [
@@ -125,35 +174,43 @@ function App() {
     setHasSearched(false);
   };
 
-  // ✅ Simple admin login
-  const handleAdminLogin = () => {
-    const password = prompt('Enter admin password:');
-    if (password === 'admin123') {
-      setIsAdmin(true);
-      alert('Welcome, Admin!');
-    } else {
-      alert('Invalid password');
-    }
-  };
-
   const handleLogout = () => {
     setIsAdmin(false);
+    localStorage.clear();
+    window.dispatchEvent(new Event('authChange'));
     alert('Logged out successfully');
   };
 
   return (
     <Router>
       <Navigation
-        onAdminLogin={handleAdminLogin}
         isAdmin={isAdmin}
         onLogout={handleLogout}
       />
 
       <Routes>
-        
         {/* ✅ Signup/Login Page */}
         <Route path="/signup-login" element={<SignupLogin setIsAdmin={setIsAdmin} />} />
 
+        {/* ✅ User Dashboard - Protected */}
+        <Route 
+          path="/user-dashboard" 
+          element={
+            <ProtectedUserRoute>
+              <UserDashboard />
+            </ProtectedUserRoute>
+          } 
+        />
+
+        {/* ✅ Admin Dashboard - Protected */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedAdminRoute>
+              <AdminDashboard isAdmin={true} />
+            </ProtectedAdminRoute>
+          }
+        />
 
         {/* ✅ Create Apple Page */}
         <Route path="/createapple" element={<CreateApple />} />
@@ -163,12 +220,6 @@ function App() {
 
         {/* ✅ About Page */}
         <Route path="/about" element={<TreeScrollPage />} />
-
-        {/* ✅ Admin Dashboard */}
-        <Route
-          path="/dashboard"
-          element={isAdmin ? <AdminDashboard isAdmin={isAdmin} /> : <div>Access Denied</div>}
-        />
 
         {/* ✅ Home Page */}
         <Route

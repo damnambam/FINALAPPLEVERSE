@@ -2,8 +2,8 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
-// Connect to appleverse_users DB
-const userDB = mongoose.createConnection("mongodb://localhost:27017/appleverse_users", {
+// Connect to appleverse DB
+const userDB = mongoose.createConnection("mongodb://localhost:27017/appleverse", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });

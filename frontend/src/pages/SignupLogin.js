@@ -1,55 +1,120 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { login, signup, adminLogin } from "../services/authService";
 import "../styles/SignupLogin.css";
 
-export default function SignupLogin({ setIsAdmin }) { // ✅ receive setIsAdmin from App.js
+export default function SignupLogin() {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    name: "",
+    dob: "",
+  });
   const [forgotPassword, setForgotPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  
   const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+    setError("");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (forgotPassword) {
-      alert("Password reset link sent to your email!");
-      return;
-    }
+    setError("");
+    setLoading(true);
 
     try {
-      if (isLogin) {
-        // ✅ Example admin login check (replace with your backend logic)
-        if (email === "admin@appleverse.com" && password === "admin123") {
-          alert("Admin login successful!");
-          setIsAdmin(true); // ✅ mark as admin
-          navigate("/dashboard"); // ✅ go to dashboard
-          return;
-        }
-
-        // ✅ Regular user login
-        const response = await axios.post("http://localhost:5000/login", {
-          email,
-          password,
-        });
-
-        alert(response.data.message || "Login successful!");
-        navigate("/");
-      } else {
-        // ✅ Signup request to backend
-        const response = await axios.post("http://localhost:5000/signup", {
-          email,
-          password,
-        });
-
-        alert(response.data.message || "Signup successful!");
-        navigate("/signup-login");
+      if (forgotPassword) {
+        alert("Password reset link sent to your email!");
+        setForgotPassword(false);
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error("Auth error:", error);
-      alert(error.response?.data?.message || "Something went wrong!");
+
+      // ============ ADMIN MODE ============
+      if (isAdminMode) {
+        if (isLogin) {
+          const response = await adminLogin(formData.email, formData.password);
+          
+          if (response.token) {
+            alert("Admin login successful!");
+            navigate("/dashboard");
+          }
+        } else {
+          const response = await fetch("http://localhost:5000/api/admin/signup-request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: formData.name,
+              dob: formData.dob,
+              email: formData.email,
+              password: formData.password,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            alert("Admin request submitted! Wait for approval.");
+            setIsLogin(true);
+            setFormData({ email: "", password: "", name: "", dob: "" });
+          } else {
+            throw new Error(data.error || "Admin signup failed");
+          }
+        }
+      } 
+      // ============ USER MODE ============
+      else {
+        if (isLogin) {
+          const response = await login(formData.email, formData.password);
+          
+          if (response.success) {
+            alert(`Hello You, ${response.user.name || response.user.email}!`);
+            navigate("/user-dashboard");
+          }
+        } else {
+          const response = await signup(
+            formData.email, 
+            formData.password, 
+            formData.name
+          );
+          
+          if (response.success) {
+            alert("Signup successful! Please login.");
+            setIsLogin(true);
+            setFormData({ email: formData.email, password: "", name: "", dob: "" });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Auth error:", err);
+      setError(err.message || "Something went wrong!");
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const toggleMode = () => {
+    setIsLogin(!isLogin);
+    setForgotPassword(false);
+    setError("");
+    setFormData({ email: "", password: "", name: "", dob: "" });
+  };
+
+  const toggleAdminMode = () => {
+    setIsAdminMode(!isAdminMode);
+    setIsLogin(true);
+    setForgotPassword(false);
+    setError("");
+    setFormData({ email: "", password: "", name: "", dob: "" });
   };
 
   return (
@@ -58,33 +123,70 @@ export default function SignupLogin({ setIsAdmin }) { // ✅ receive setIsAdmin 
         <h2>
           {forgotPassword
             ? "Forgot Password"
+            : isAdminMode && !isLogin
+            ? "Request Admin Access 👨‍💼"
+            : isAdminMode
+            ? "Admin Login 👨‍💼"
             : isLogin
-            ? "Login"
-            : "Sign Up"}
+            ? "The vibe is ripe 🍎"
+            : "Join Appleverse 🍏"}
         </h2>
 
+        {error && <div className="error-message">{error}</div>}
+
         <form onSubmit={handleSubmit}>
+          {!isLogin && !forgotPassword && (
+            <input
+              type="text"
+              name="name"
+              placeholder="Full Name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+            />
+          )}
+
+          {!isLogin && !forgotPassword && isAdminMode && (
+            <input
+              type="date"
+              name="dob"
+              placeholder="Date of Birth"
+              value={formData.dob}
+              onChange={handleChange}
+              required
+            />
+          )}
+
           <input
             type="email"
+            name="email"
             placeholder="Email Address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            value={formData.email}
+            onChange={handleChange}
             required
           />
 
           {!forgotPassword && (
             <input
               type="password"
+              name="password"
               placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={formData.password}
+              onChange={handleChange}
               required
+              minLength={6}
             />
           )}
 
-          <button type="submit" className="auth-btn">
-            {forgotPassword
+          <button type="submit" className="auth-btn" disabled={loading}>
+            {loading
+              ? "Processing..."
+              : forgotPassword
               ? "Send Reset Link"
+              : isAdminMode && !isLogin
+              ? "Request Admin Access"
+              : isAdminMode
+              ? "Admin Login"
               : isLogin
               ? "Login"
               : "Sign Up"}
@@ -92,7 +194,7 @@ export default function SignupLogin({ setIsAdmin }) { // ✅ receive setIsAdmin 
         </form>
 
         <div className="auth-links">
-          {!forgotPassword && (
+          {!forgotPassword && isLogin && !isAdminMode && (
             <p onClick={() => setForgotPassword(true)} className="link">
               Forgot Password?
             </p>
@@ -106,10 +208,24 @@ export default function SignupLogin({ setIsAdmin }) { // ✅ receive setIsAdmin 
 
           {!forgotPassword && (
             <p>
-              {isLogin ? "Don’t have an account?" : "Already have an account?"}{" "}
-              <span className="link" onClick={() => setIsLogin(!isLogin)}>
+              {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+              <span className="link" onClick={toggleMode}>
                 {isLogin ? "Sign Up" : "Login"}
               </span>
+            </p>
+          )}
+
+          {!forgotPassword && (
+            <p className="admin-toggle">
+              {isAdminMode ? (
+                <span className="link" onClick={toggleAdminMode}>
+                  ← Regular User {isLogin ? "Login" : "Signup"}
+                </span>
+              ) : (
+                <span className="link" onClick={toggleAdminMode}>
+                  Admin {isLogin ? "Login" : "Signup"} →
+                </span>
+              )}
             </p>
           )}
         </div>
