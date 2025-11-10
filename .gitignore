@@ -58,3 +58,7 @@ dist/
 # ===================================================================
 .vscode/
 .idea/
+
+# Frontend cache
+frontend/.cache/
+frontend/node_modules/.cache/
