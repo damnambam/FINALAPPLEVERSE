@@ -375,7 +375,49 @@ router.post('/bulk-upload-with-images', verifyAdminToken, upload.any(), async (r
 });
 
 // ========================
-// GET ALL APPLES
+// GET ALL APPLES (Root path - for LibraryV2)
+// ========================
+router.get('/', async (req, res) => {
+  try {
+    // Support search query parameter
+    const searchQuery = req.query.search;
+    
+    let apples;
+    if (searchQuery) {
+      // If search query provided, search apples
+      apples = await Apple.find({
+        $or: [
+          { cultivar_name: { $regex: searchQuery, $options: 'i' } },
+          { accession: { $regex: searchQuery, $options: 'i' } },
+          { acno: { $regex: searchQuery, $options: 'i' } },
+          { description: { $regex: searchQuery, $options: 'i' } },
+          { color: { $regex: searchQuery, $options: 'i' } },
+          { taste: { $regex: searchQuery, $options: 'i' } }
+        ]
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+      console.log(`🔍 Search for "${searchQuery}": found ${apples.length} apples`);
+    } else {
+      // Return all apples
+      apples = await Apple.find({})
+        .sort({ createdAt: -1 })
+        .lean();
+      console.log(`📊 Fetching all apples: ${apples.length} found`);
+    }
+
+    res.json(apples);
+  } catch (error) {
+    console.error('❌ Error fetching apples:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
+// ========================
+// GET ALL APPLES (/all alias)
 // ========================
 router.get('/all', async (req, res) => {
   try {
@@ -548,5 +590,53 @@ router.get('/search/:query', async (req, res) => {
     });
   }
 });
+// ========================
+// GET FILTER OPTIONS (for FilterSidebar)
+// ========================
+router.get('/filters/options', async (req, res) => {
+  try {
+    console.log('📊 Fetching filter options...');
+    
+    const db = mongoose.connection;
+    const applesCollection = db.collection('apples');
+    
+    // Get unique values for each filter field using actual field names with spaces
+    const [acnoValues, accessionValues, countryValues, provinceValues, cityValues, pedigreeValues] = await Promise.all([
+      applesCollection.distinct('acno'),
+      applesCollection.distinct('accession'),
+      applesCollection.distinct('e origin country'),
+      applesCollection.distinct('e origin province'),
+      applesCollection.distinct('e origin city'),
+      applesCollection.distinct('e pedigree')
+    ]);
 
+    const filters = {
+      acno: (acnoValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
+      accession: (accessionValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
+      country: (countryValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
+      province: (provinceValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
+      city: (cityValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
+      pedigree: (pedigreeValues || []).filter(v => v && v !== 'null' && v !== null).sort()
+    };
+
+    console.log(`✅ Filter options retrieved:`);
+    console.log(`   ACNO: ${filters.acno.length} values`);
+    console.log(`   ACCESSION: ${filters.accession.length} values`);
+    console.log(`   COUNTRY: ${filters.country.length} values`);
+    console.log(`   PROVINCE: ${filters.province.length} values`);
+    console.log(`   CITY: ${filters.city.length} values`);
+    console.log(`   PEDIGREE: ${filters.pedigree.length} values`);
+
+    res.json({
+      success: true,
+      filters
+    });
+  } catch (error) {
+    console.error('❌ Error fetching filter options:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
 export default router;

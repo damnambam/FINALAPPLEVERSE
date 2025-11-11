@@ -3,7 +3,7 @@ import { Apple, Home, Package, Info, LogIn, LayoutDashboard, User, Settings } fr
 import { useNavigate, useLocation } from 'react-router-dom';
 import { getCurrentUser, isAuthenticated, logout } from '../services/authService';
 import '../styles/Navigation.css';
-
+ 
 const Navigation = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [user, setUser] = useState(null);
@@ -11,20 +11,20 @@ const Navigation = () => {
   const [isAdminUser, setIsAdminUser] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-
+ 
   // Function to update authentication state
   const updateAuthState = () => {
     let currentUser = getCurrentUser();
     const loggedIn = isAuthenticated();
     const adminStatus = localStorage.getItem('isAdmin') === 'true';
     const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
-    
+   
     // If getCurrentUser didn't return user data, try getting from localStorage directly
     if (!currentUser || !currentUser.name) {
       try {
         const adminData = localStorage.getItem('adminData');
         const userData = localStorage.getItem('userData');
-        
+       
         if (adminData) {
           currentUser = JSON.parse(adminData);
         } else if (userData) {
@@ -34,7 +34,7 @@ const Navigation = () => {
         console.error('Error parsing user data from localStorage:', err);
       }
     }
-    
+   
     // Basic validation - check if token exists and looks valid
     if (loggedIn && (!token || token === 'null' || token === 'undefined')) {
       logout();
@@ -43,34 +43,34 @@ const Navigation = () => {
       setIsAdminUser(false);
       return;
     }
-    
+   
     setUser(currentUser);
     setIsLoggedIn(loggedIn);
     setIsAdminUser(adminStatus);
   };
-
+ 
   // Check authentication on mount and when location changes
   useEffect(() => {
     updateAuthState();
   }, [location.pathname]);
-
+ 
   // Listen for storage changes (when user logs in/out in another tab or component)
   useEffect(() => {
     const handleStorageChange = () => {
       updateAuthState();
     };
-
+ 
     window.addEventListener('storage', handleStorageChange);
-    
+   
     // Custom event for same-tab updates
     window.addEventListener('authChange', handleStorageChange);
-
+ 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('authChange', handleStorageChange);
     };
   }, []);
-
+ 
   // Update active tab based on current route
   useEffect(() => {
     const path = location.pathname;
@@ -80,7 +80,7 @@ const Navigation = () => {
     else if (path === '/dashboard') setActiveTab('dashboard');
     else if (path === '/user-dashboard') setActiveTab('dashboard');
   }, [location.pathname]);
-
+ 
   // Build tabs array dynamically
   const getTabsArray = () => {
     const baseTabs = [
@@ -88,43 +88,43 @@ const Navigation = () => {
       { id: 'library', label: 'Library', icon: Package, route: '/library' },
       { id: 'about', label: 'About', icon: Info, route: '/about' },
     ];
-
+ 
     // Add dashboard tab based on user type
     if (isAdminUser) {
       baseTabs.push({ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, route: '/dashboard' });
     } else if (isLoggedIn) {
       baseTabs.push({ id: 'dashboard', label: 'My Dashboard', icon: User, route: '/user-dashboard' });
     }
-
+ 
     return baseTabs;
   };
-
+ 
   const tabs = getTabsArray();
-
+ 
   const handleTabClick = (tab) => {
     setActiveTab(tab.id);
     if (tab.route) {
       navigate(tab.route);
     }
   };
-
+ 
   const handleSignupLogin = () => {
     navigate('/signup-login');
   };
-
+ 
   const handleLogout = () => {
     logout();
     setUser(null);
     setIsLoggedIn(false);
     setIsAdminUser(false);
     setActiveTab('home');
-    
+   
     // Dispatch custom event for same-tab updates
     window.dispatchEvent(new Event('authChange'));
-    
+   
     navigate('/');
   };
-
+ 
   return (
     <nav className="navigation">
       <div className="nav-container">
@@ -133,7 +133,7 @@ const Navigation = () => {
           <Apple size={28} className="brand-icon" />
           <span className="brand-text">AppleVerse 2.0</span>
         </div>
-
+ 
         {/* Main Navigation Tabs */}
         <div className="nav-tabs">
           {tabs.map((tab) => {
@@ -150,7 +150,7 @@ const Navigation = () => {
             );
           })}
         </div>
-
+ 
         {/* User Actions */}
         <div className="nav-actions">
           {isLoggedIn ? (
@@ -186,5 +186,5 @@ const Navigation = () => {
     </nav>
   );
 };
-
+ 
 export default Navigation;

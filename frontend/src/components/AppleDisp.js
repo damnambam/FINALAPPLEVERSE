@@ -1,14 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, Upload, X, Save, Edit2 } from 'lucide-react';
 import './AppleDisp.css';
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, isAdmin = false, onSave }) => {
   const [apple, setApple] = useState(appleData || {});
-  const [images, setImages] = useState([
-    'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=400&h=400&fit=crop',
-    'https://images.unsplash.com/photo-1619546952812-070d0a45ae0e?w=400&h=400&fit=crop'
-  ]);
+  const [images, setImages] = useState([]);
   const [isEditing, setIsEditing] = useState(initialIsEditing);
+
+  // Initialize images from appleData
+  useEffect(() => {
+    if (appleData) {
+      setApple(appleData);
+      
+      // Get images from the apple data
+      if (appleData.images && Array.isArray(appleData.images)) {
+        const formattedImages = appleData.images.map(img => {
+          // If it's a path, prepend API_BASE
+          if (img.startsWith('/images/') || img.startsWith('/data/')) {
+            return `${API_BASE}${img}`;
+          }
+          // Otherwise assume it's a full URL
+          return img;
+        });
+        setImages(formattedImages);
+      } else {
+        setImages([]); // Empty array if no images
+      }
+    }
+  }, [appleData]);
 
   // Handle field change
   const handleFieldChange = (field, value) => {
@@ -100,15 +121,15 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     });
     
     addSection('GEOGRAPHY & ORIGIN', {
-      'Country': apple.e_origin_country,
-      'Province/State': apple.e_origin_province,
-      'City': apple.e_origin_city
+      'Country': apple['e origin country'],
+      'Province/State': apple['e origin province'],
+      'City': apple['e origin city']
     });
-    
+
     addSection('BIOLOGY & TAXONOMY', {
-      'Genus': apple.e_genus,
-      'Species': apple.e_species,
-      'Pedigree': apple.e_pedigree
+      'Genus': apple['e genus'],
+      'Species': apple['e species'],
+      'Pedigree': apple['e pedigree']
     });
     
     addSection('ADDITIONAL INFORMATION', {
@@ -138,24 +159,24 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     {
       title: 'Geography & Origin',
       fields: [
-        { label: 'Country', key: 'e_origin_country' },
-        { label: 'Province/State', key: 'e_origin_province' },
-        { label: 'City', key: 'e_origin_city' }
+        { label: 'Country', key: 'e origin country' },
+        { label: 'Province/State', key: 'e origin province' },
+        { label: 'City', key: 'e origin city' }
       ]
     },
     {
       title: 'Biology & Taxonomy',
       fields: [
-        { label: 'Genus', key: 'e_genus' },
-        { label: 'Species', key: 'e_species' },
-        { label: 'Pedigree', key: 'e_pedigree' }
+        { label: 'Genus', key: 'e genus' },
+        { label: 'Species', key: 'e species' },
+        { label: 'Pedigree', key: 'e pedigree' }
       ]
     },
     {
       title: 'People & Custodians',
       fields: [
-        { label: 'Breeder', key: 'e_breeder' },
-        { label: 'Collector', key: 'e_collector' }
+        { label: 'Breeder', key: 'e breeder' },
+        { label: 'Collector', key: 'e collector' }
       ]
     },
     {
@@ -178,6 +199,11 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
         <div className="apple-disp-header">
           <h1>🍎 {apple.cultivar_name || apple.name}</h1>
           <div className="header-actions">
+            {!isEditing && (
+              <button className="download-pdf-btn-header" onClick={handleDownloadPDF} title="Download as PDF">
+                <Download size={20} />
+              </button>
+            )}
             {isAdmin && !isEditing && (
               <button className="edit-mode-btn" onClick={() => setIsEditing(true)}>
                 <Edit2 size={20} />
@@ -288,10 +314,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
               </button>
             </div>
           ) : (
-            <button className="download-pdf-btn" onClick={handleDownloadPDF}>
-              <Download size={20} />
-              Download as PDF
-            </button>
+            <div></div>
           )}
         </div>
       </div>

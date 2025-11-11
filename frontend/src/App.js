@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  useLocation,
+  useNavigate
+} from 'react-router-dom';
 import Navigation from './components/Navigation';
 import HeroSection from './components/HeroSection';
 import FeaturesGrid from './components/FeaturesGrid';
@@ -14,9 +22,10 @@ import Footer from './components/Footer';
 import CreateApple from './pages/CreateApple';
 import SingleApple from './pages/SingleApple';
 import SignupLogin from "./pages/SignupLogin";
+import LibraryV2 from "./pages/LibraryV2";
+import AppleDisp from "./components/AppleDisp";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import IntegratedAuth from './components/IntegratedAuth';
-
 import './App.css';
 
 // 🔒 Protected Route for Admin
@@ -33,12 +42,49 @@ const ProtectedUserRoute = ({ children }) => {
   const userToken = localStorage.getItem('token');
   const isAdmin = localStorage.getItem('isAdmin') === 'true';
   
-  // Allow access if user has either admin token or regular user token
   if (!adminToken && !userToken) {
     return <Navigate to="/signup-login" replace />;
   }
-  
   return children;
+};
+
+// 🍎 Wrapper component for apple detail route
+const AppleDisplayPage = () => {
+  const { id } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [apple, setApple] = useState(location.state?.apple || null);
+  const [loading, setLoading] = useState(!location.state?.apple);
+
+  useEffect(() => {
+    if (!apple) {
+      const fetchApple = async () => {
+        try {
+          const res = await fetch(`http://localhost:5000/api/apples/${id}`);
+          const data = await res.json();
+          if (data.success) {
+            setApple(data.apple);
+          }
+        } catch (err) {
+          console.error("❌ Failed to fetch apple:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchApple();
+    }
+  }, [id, apple]);
+
+  if (loading) return <p style={{ textAlign: "center", marginTop: "2rem" }}>Loading apple details…</p>;
+  if (!apple) return <p style={{ textAlign: "center", marginTop: "2rem" }}>Apple not found.</p>;
+
+  return (
+    <AppleDisp
+      appleData={apple}
+      onClose={() => navigate(-1)}
+      isAdmin={true}
+    />
+  );
 };
 
 function App() {
@@ -122,7 +168,7 @@ function App() {
         <Route path="/signup-login" element={<SignupLogin setIsAdmin={setIsAdmin} />} />
         <Route path="/login" element={<IntegratedAuth />} />
 
-        {/* ⚙️ Settings Page (Protected for all logged-in users) */}
+        {/* ⚙️ Settings Page */}
         <Route
           path="/settings"
           element={
@@ -151,6 +197,12 @@ function App() {
             </ProtectedAdminRoute>
           }
         />
+
+        {/* 📚 Library Page */}
+        <Route path="/library" element={<LibraryV2 />} />
+
+        {/* 🍎 Apple Detail Route */}
+        <Route path="/apple-detail/:id" element={<AppleDisplayPage />} />
 
         {/* 🍎 Apple Upload Routes */}
         <Route path="/create-apple" element={<CreateApple />} />
