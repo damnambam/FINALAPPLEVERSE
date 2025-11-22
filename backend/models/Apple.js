@@ -182,6 +182,12 @@ const appleSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
+
+  images_count: {
+  type: Number,
+  default: 0,
+  description: 'Auto-populated: number of images uploaded for this apple'
+},
   
   // Custom Fields - allows for user-defined fields
   customFields: {

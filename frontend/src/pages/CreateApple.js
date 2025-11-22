@@ -4,7 +4,7 @@ import axios from 'axios';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle, RefreshCw, Copy, XCircle } from 'lucide-react';
 
 export default function CreateApple() {
   const navigate = useNavigate();
@@ -19,6 +19,8 @@ export default function CreateApple() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [manualMatches, setManualMatches] = useState({});
+  const [duplicates, setDuplicates] = useState([]);
+  const [duplicateResolutions, setDuplicateResolutions] = useState({});
 
   // Statistics
   const [stats, setStats] = useState({
@@ -39,6 +41,8 @@ export default function CreateApple() {
     setUnmatchedApples([]);
     setError('');
     setManualMatches({});
+    setDuplicates([]);
+    setDuplicateResolutions({});
     setStats({ matched: 0, unmatchedImages: 0, unmatchedApples: 0 });
   };
 
@@ -59,7 +63,7 @@ export default function CreateApple() {
   };
 
   // ===========================
-  // FIXED: Proper Excel/CSV Parsing
+  // IMPROVED: Better Validation - List ALL Errors
   // ===========================
   const handleCsvUpload = async () => {
     if (!csvFile) {
@@ -81,7 +85,7 @@ export default function CreateApple() {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         parsedData = XLSX.utils.sheet_to_json(firstSheet, { 
           defval: '',
-          raw: false  // Convert dates/numbers to strings
+          raw: false
         });
       } 
       // Handle CSV files
@@ -102,12 +106,12 @@ export default function CreateApple() {
         return;
       }
 
-      // Validate mandatory columns
+      // Validate that there are mandatory columns
       const firstRow = parsedData[0];
       const headers = Object.keys(firstRow);
       
       // Check for cultivar name column
-      const hasCultivarName = headers.some(key => {
+      const cultivarField = headers.find(key => {
         const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
         return (
           normalized.includes('cultivar') && normalized.includes('name') ||
@@ -118,37 +122,6 @@ export default function CreateApple() {
       });
       
       // Check for accession column
-      const hasAccession = headers.some(key => {
-        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return (
-          normalized.includes('accession') ||
-          normalized === 'harrowaccession'
-        );
-      });
-
-      if (!hasCultivarName) {
-        setError('❌ CSV must contain a "CULTIVAR_NAME" or "CULTIVAR NAME" column. This is a required field.');
-        setLoading(false);
-        return;
-      }
-      
-      if (!hasAccession) {
-        setError('❌ CSV must contain an "ACCESSION" column. This is a required field.');
-        setLoading(false);
-        return;
-      }
-
-      // Find the actual column names
-      const cultivarField = headers.find(key => {
-        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return (
-          normalized.includes('cultivar') && normalized.includes('name') ||
-          normalized === 'name' ||
-          normalized === 'cultivarname' ||
-          normalized === 'cultivar'
-        );
-      });
-     
       const accessionField = headers.find(key => {
         const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
         return (
@@ -157,39 +130,74 @@ export default function CreateApple() {
         );
       });
 
-      // Check for empty mandatory fields in data rows
-      const rowsWithMissingData = [];
-      parsedData.forEach((row, index) => {
-        const cultivarValue = row[cultivarField];
-        const accessionValue = row[accessionField];
-        
-        if (!cultivarValue || !cultivarValue.toString().trim()) {
-          rowsWithMissingData.push({ row: index + 2, field: 'Cultivar Name', value: cultivarValue });
-        }
-        if (!accessionValue || !accessionValue.toString().trim()) {
-          rowsWithMissingData.push({ row: index + 2, field: 'Accession', value: accessionValue });
-        }
-      });
+      if (!cultivarField) {
+        setError('❌ File must contain a "CULTIVAR NAME" or "CULTIVAR_NAME" column. This is a required field.');
+        setLoading(false);
+        return;
+      }
       
-      if (rowsWithMissingData.length > 0) {
-        const errorMessages = rowsWithMissingData.slice(0, 5).map(item => 
-          `Row ${item.row}: Missing ${item.field}`
-        ).join(', ');
-        const remaining = rowsWithMissingData.length - 5;
-        setError(`❌ Found rows with missing mandatory fields: ${errorMessages}${remaining > 0 ? ` and ${remaining} more` : ''}. Both ACCESSION and CULTIVAR_NAME are required for every row.`);
+      if (!accessionField) {
+        setError('❌ File must contain an "ACCESSION" column. This is a required field.');
         setLoading(false);
         return;
       }
 
-      // Check for duplicate entries
+      // ===========================
+      // NEW: Collect ALL validation errors
+      // ===========================
+      const validationErrors = [];
+      
+      parsedData.forEach((row, index) => {
+        const rowNumber = index + 2; // +2 because index 0 is row 2 (after header)
+        const cultivarValue = row[cultivarField];
+        const accessionValue = row[accessionField];
+        
+        const errors = [];
+        
+        if (!cultivarValue || !cultivarValue.toString().trim()) {
+          errors.push('Missing CULTIVAR NAME');
+        }
+        if (!accessionValue || !accessionValue.toString().trim()) {
+          errors.push('Missing ACCESSION');
+        }
+        
+        if (errors.length > 0) {
+          validationErrors.push({
+            row: rowNumber,
+            cultivar: cultivarValue || '(empty)',
+            accession: accessionValue || '(empty)',
+            errors: errors
+          });
+        }
+      });
+      
+      // If there are validation errors, show ALL of them
+      if (validationErrors.length > 0) {
+        const errorList = validationErrors.slice(0, 10).map(item => 
+          `Row ${item.row}: ${item.errors.join(', ')}`
+        ).join('\n');
+        
+        const remaining = validationErrors.length - 10;
+        const summary = validationErrors.length > 10 
+          ? `\n...and ${remaining} more row(s) with errors.`
+          : '';
+        
+        setError(
+          `❌ Found ${validationErrors.length} row(s) with missing mandatory fields:\n\n${errorList}${summary}\n\nBoth ACCESSION and CULTIVAR NAME are required for every row.`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Check for duplicate entries within the CSV
       const seen = new Set();
-      const duplicates = [];
+      const duplicatesInFile = [];
      
       parsedData.forEach((row, index) => {
-        const identifier = `${row[accessionField]}_${row[cultivarField]}`.toLowerCase();
+        const identifier = `${row[accessionField]}_${row[cultivarField]}`.toLowerCase().trim();
        
         if (seen.has(identifier)) {
-          duplicates.push({ 
+          duplicatesInFile.push({ 
             row: index + 2, 
             accession: row[accessionField],
             name: row[cultivarField] 
@@ -198,19 +206,32 @@ export default function CreateApple() {
         seen.add(identifier);
       });
 
-      if (duplicates.length > 0) {
-        const dupeList = duplicates.slice(0, 3).map(d => 
-          `${d.accession} - ${d.name} (row ${d.row})`
-        ).join(', ');
-        const remaining = duplicates.length - 3;
-        setError(`❌ Duplicate entries found: ${dupeList}${remaining > 0 ? ` and ${remaining} more` : ''}. Please remove duplicates and try again.`);
+      if (duplicatesInFile.length > 0) {
+        const dupeList = duplicatesInFile.slice(0, 5).map(d => 
+          `Row ${d.row}: ${d.accession} - ${d.name}`
+        ).join('\n');
+        const remaining = duplicatesInFile.length - 5;
+        const summary = remaining > 0 ? `\n...and ${remaining} more duplicate(s).` : '';
+        
+        setError(
+          `❌ Found ${duplicatesInFile.length} duplicate entries in your file:\n\n${dupeList}${summary}\n\nPlease remove duplicates and try again.`
+        );
         setLoading(false);
         return;
       }
 
+      // Remove IMAGES column if present (will be auto-populated after upload)
+      parsedData.forEach(row => {
+        Object.keys(row).forEach(key => {
+          if (key.toLowerCase().replace(/[^a-z]/g, '') === 'images') {
+            delete row[key];
+          }
+        });
+      });
+
       setCsvData(parsedData);
       console.log('✅ File parsed:', parsedData.length, 'rows');
-      console.log('✅ Sample row:', parsedData[0]);
+      console.log('✅ Validation passed - no missing fields');
      
       // Automatically move to Step 2
       setStep(2);
@@ -238,7 +259,7 @@ export default function CreateApple() {
   };
 
   // ===========================
-  // FIXED: Better Image Matching with IMAGES Column Support
+  // IMPROVED: Better Symbol Handling in Image Matching
   // ===========================
   const handleMatchImages = async () => {
     if (!imagesZip) {
@@ -288,6 +309,9 @@ export default function CreateApple() {
     }
   };
 
+  // ===========================
+  // IMPROVED: Better matching with ALL symbols supported
+  // ===========================
   const performMatching = (images) => {
     const matched = [];
     const unmatchedImgs = [];
@@ -314,50 +338,51 @@ export default function CreateApple() {
       );
     });
 
-    // Find IMAGES column (to track how many images expected per apple)
-    const imagesField = headers.find(key => 
-      key.toLowerCase().replace(/[^a-z]/g, '') === 'images'
-    );
-
     // Track which images have been matched
     const matchedImageNames = new Set();
 
     csvData.forEach((apple, appleIndex) => {
       const cultivarName = apple[cultivarField];
       const accessionNumber = apple[accessionField];
-      const expectedImageCount = imagesField ? parseInt(apple[imagesField]) || 1 : 1;
      
       if (!cultivarName || !accessionNumber) return;
 
-      // Create search patterns
-      const patterns = [
-        accessionNumber.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        cultivarName.toLowerCase().replace(/[^a-z0-9]/g, ''),
-        `${accessionNumber}_${cultivarName}`.toLowerCase().replace(/[^a-z0-9]/g, '')
-      ];
-     
+      // ===========================
+      // IMPROVED: Better pattern matching with symbol support
+      // ===========================
+      // Create multiple search patterns with different symbol handling
+      const createSearchPattern = (text) => {
+        if (!text) return '';
+        return text.toLowerCase()
+          .replace(/[^a-z0-9]/g, ''); // Remove ALL non-alphanumeric
+      };
+
+      const accessionPattern = createSearchPattern(accessionNumber);
+      const cultivarPattern = createSearchPattern(cultivarName);
+      const combinedPattern = createSearchPattern(`${accessionNumber}_${cultivarName}`);
+      
       // Find matching images
       const appleImages = [];
       
       for (const img of images) {
         if (matchedImageNames.has(img.name)) continue; // Skip already matched
         
-        const cleanImgName = img.name.toLowerCase()
-          .replace(/\.(jpg|jpeg|png|gif|bmp|webp)$/i, '')
-          .replace(/[^a-z0-9]/g, '');
+        const cleanImgName = createSearchPattern(img.name);
        
-        const isMatch = patterns.some(pattern => 
-          cleanImgName.includes(pattern) || 
-          pattern.includes(cleanImgName) ||
-          cleanImgName.startsWith(pattern)
-        );
+        // Try multiple matching strategies
+        const isMatch = 
+          // Strategy 1: Exact accession match
+          (accessionPattern.length > 0 && cleanImgName.includes(accessionPattern)) ||
+          // Strategy 2: Cultivar name match (only if > 3 chars to avoid false positives)
+          (cultivarPattern.length > 3 && cleanImgName.includes(cultivarPattern)) ||
+          // Strategy 3: Combined pattern
+          (combinedPattern.length > 0 && cleanImgName.includes(combinedPattern)) ||
+          // Strategy 4: Image starts with accession
+          (accessionPattern.length > 0 && cleanImgName.startsWith(accessionPattern));
 
         if (isMatch) {
           appleImages.push(img);
           matchedImageNames.add(img.name);
-          
-          // Stop if we've matched the expected number of images
-          if (appleImages.length >= expectedImageCount) break;
         }
       }
 
@@ -368,16 +393,14 @@ export default function CreateApple() {
           images: appleImages,
           cultivarName: cultivarName,
           accessionNumber: accessionNumber,
-          expectedCount: expectedImageCount,
-          actualCount: appleImages.length
+          imageCount: appleImages.length
         });
       } else {
         unmatchedApps.push({
           appleIndex: appleIndex,
           apple: apple,
           cultivarName: cultivarName,
-          accessionNumber: accessionNumber,
-          expectedCount: expectedImageCount
+          accessionNumber: accessionNumber
         });
       }
     });
@@ -416,7 +439,16 @@ export default function CreateApple() {
   };
 
   // ===========================
-  // FIXED: Proper Image-to-Apple Association
+  // NEW: Handle duplicate resolution
+  // ===========================
+  const handleDuplicateResolution = (index, action) => {
+    const newResolutions = { ...duplicateResolutions };
+    newResolutions[index] = action;
+    setDuplicateResolutions(newResolutions);
+  };
+
+  // ===========================
+  // IMPROVED: Check for duplicates before saving
   // ===========================
   const handleSaveToDatabase = async () => {
     setLoading(true);
@@ -435,8 +467,7 @@ export default function CreateApple() {
               images: [selectedImage],
               cultivarName: item.cultivarName,
               accessionNumber: item.accessionNumber,
-              expectedCount: item.expectedCount,
-              actualCount: 1
+              imageCount: 1
             });
           }
         } else {
@@ -447,39 +478,29 @@ export default function CreateApple() {
             images: [],
             cultivarName: item.cultivarName,
             accessionNumber: item.accessionNumber,
-            expectedCount: item.expectedCount,
-            actualCount: 0
+            imageCount: 0
           });
         }
       });
 
-      console.log('💾 Saving to database:', finalData.length, 'entries');
+      console.log('💾 Preparing to save:', finalData.length, 'entries');
 
       // Create FormData for upload
       const formData = new FormData();
      
-      console.log('📦 Preparing to send:', {
-        totalApples: finalData.length,
-        applesWithImages: finalData.filter(item => item.images && item.images.length > 0).length,
-        totalImages: finalData.reduce((sum, item) => sum + (item.images?.length || 0), 0)
-      });
-     
-      // FIXED: Associate images with correct apple indices
+      // Add apple data and images
       finalData.forEach((item) => {
-        // Add apple data
         formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
-        console.log(`   📝 Added apple[${item.appleIndex}]: ${item.cultivarName}`);
        
-        // Add image blobs with index mapping
         if (item.images && item.images.length > 0) {
           item.images.forEach((img) => {
             formData.append(`images_${item.appleIndex}`, img.blob, img.name);
-            console.log(`   📸 Added image for apple[${item.appleIndex}]: ${img.name}`);
           });
         }
+        
+        // Add image count for backend to auto-populate IMAGES column
+        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
       });
-
-      console.log('📋 FormData prepared with', finalData.length, 'apples');
 
       // Get admin token
       const adminToken = localStorage.getItem('adminToken');
@@ -491,7 +512,11 @@ export default function CreateApple() {
         return;
       }
 
-      // Send to backend
+      // ===========================
+      // NEW: Check for duplicates first
+      // ===========================
+      console.log('🔍 Checking for duplicates in database...');
+      
       const response = await axios.post(
         'http://localhost:5000/api/apples/bulk-upload-with-images', 
         formData, 
@@ -505,11 +530,21 @@ export default function CreateApple() {
 
       console.log('✅ Upload response:', response.data);
       
+      // ===========================
+      // NEW: Handle duplicate response
+      // ===========================
+      if (response.data.duplicates && response.data.duplicates.length > 0) {
+        setDuplicates(response.data.duplicates);
+        setLoading(false);
+        // Stay on current step to show duplicate resolution UI
+        return;
+      }
+      
       if (response.data.stats.failed > 0) {
         alert(`⚠️ Upload completed with warnings:\n✅ ${response.data.stats.successful} apple(s) uploaded\n❌ ${response.data.stats.failed} failed\n\nCheck console for details.`);
         console.log('Failed items:', response.data.errors);
       } else {
-        alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s)!`);
+        alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s) with ${response.data.stats.totalImages || 0} images!`);
       }
      
       handleBackToStart();
@@ -526,6 +561,97 @@ export default function CreateApple() {
       } else {
         alert(`❌ Error: ${err.response?.data?.message || err.message || 'Save failed'}`);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ===========================
+  // NEW: Handle duplicate resolution and resubmit
+  // ===========================
+  const handleResolveDuplicates = async () => {
+    setLoading(true);
+
+    try {
+      // Check if all duplicates have been resolved
+      const unresolvedCount = duplicates.filter(
+        (_, index) => !duplicateResolutions[index]
+      ).length;
+
+      if (unresolvedCount > 0) {
+        alert(`⚠️ Please make a decision for all ${unresolvedCount} duplicate(s) before proceeding.`);
+        setLoading(false);
+        return;
+      }
+
+      // Rebuild FormData with resolution instructions
+      const finalData = [...matchedData];
+      unmatchedApples.forEach((item) => {
+        if (manualMatches[item.appleIndex]) {
+          const selectedImage = extractedImages.find(img => img.name === manualMatches[item.appleIndex]);
+          if (selectedImage) {
+            finalData.push({
+              appleIndex: item.appleIndex,
+              apple: item.apple,
+              images: [selectedImage],
+              cultivarName: item.cultivarName,
+              accessionNumber: item.accessionNumber,
+              imageCount: 1
+            });
+          }
+        } else {
+          finalData.push({
+            appleIndex: item.appleIndex,
+            apple: item.apple,
+            images: [],
+            cultivarName: item.cultivarName,
+            accessionNumber: item.accessionNumber,
+            imageCount: 0
+          });
+        }
+      });
+
+      const formData = new FormData();
+      formData.append('duplicateResolutions', JSON.stringify(duplicateResolutions));
+     
+      finalData.forEach((item) => {
+        formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
+       
+        if (item.images && item.images.length > 0) {
+          item.images.forEach((img) => {
+            formData.append(`images_${item.appleIndex}`, img.blob, img.name);
+          });
+        }
+        
+        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
+      });
+
+      const adminToken = localStorage.getItem('adminToken');
+
+      const response = await axios.post(
+        'http://localhost:5000/api/apples/bulk-upload-with-images', 
+        formData, 
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${adminToken}`
+          }
+        }
+      );
+
+      console.log('✅ Final upload response:', response.data);
+      
+      alert(`🎉 Successfully processed ${response.data.stats.successful} apple(s)!\n\n` +
+        `Replaced: ${response.data.stats.replaced || 0}\n` +
+        `Duplicated: ${response.data.stats.duplicated || 0}\n` +
+        `Skipped: ${response.data.stats.skipped || 0}`
+      );
+     
+      handleBackToStart();
+     
+    } catch (err) {
+      console.error('❌ Resolution error:', err);
+      alert(`❌ Error: ${err.response?.data?.message || err.message || 'Failed to process duplicates'}`);
     } finally {
       setLoading(false);
     }
@@ -557,25 +683,26 @@ export default function CreateApple() {
              
               <div className="instruction-item">
                 <strong>1. Single Upload</strong>
-                <p>Manually enter details for one apple at a time using the standardized template with 54 fields.</p>
+                <p>Manually enter details for one apple at a time.</p>
               </div>
              
               <div className="instruction-item">
                 <strong>2. Multiple Upload (Bulk)</strong>
-                <p>Upload multiple apple entries using CSV or Excel files. <strong>Required: ACCESSION and CULTIVAR_NAME</strong>.</p>
+                <p>Upload multiple apple entries using CSV or Excel files. <strong>Required: ACCESSION and CULTIVAR NAME</strong>.</p>
               </div>
              
               <div className="instruction-item">
                 <strong>3. Template Creator</strong>
-                <p>Download the Excel template with all 54 standardized fields.</p>
+                <p>Download the Excel template with all standardized fields.</p>
               </div>
 
               <div className="note-box">
                 <strong>📝 Template Structure:</strong>
                 <ul>
-                  <li><strong>Mandatory:</strong> ACCESSION, CULTIVAR_NAME</li>
-                  <li><strong>Optional:</strong> 52 additional standardized fields</li>
-                  <li><strong>IMAGES column:</strong> Specify how many images per apple (e.g., "2" or "4")</li>
+                  <li><strong>Mandatory:</strong> ACCESSION, CULTIVAR NAME</li>
+                  <li><strong>Optional:</strong> 50+ additional standardized fields</li>
+                  <li><strong>IMAGES column:</strong> Auto-populated after upload based on actual images uploaded</li>
+                  <li><strong>Symbols:</strong> All special characters (#, &, /, etc.) fully supported!</li>
                 </ul>
               </div>
             </div>
@@ -616,18 +743,23 @@ export default function CreateApple() {
               <div className="instruction-item">
                 <strong>✓ Mandatory Columns:</strong>
                 <p><strong>ACCESSION</strong> - Unique identifier</p>
-                <p><strong>CULTIVAR_NAME</strong> - Apple variety name</p>
+                <p><strong>CULTIVAR NAME</strong> - Apple variety name (all symbols supported: #, &, /, etc.)</p>
                 <p className="error-text">⚠️ Both required for every row!</p>
               </div>
 
               <div className="instruction-item">
-                <strong>✓ IMAGES Column (Optional):</strong>
-                <p>Specify expected image count per apple (e.g., enter "2" if you have 2 images for that apple)</p>
+                <strong>✓ IMAGES Column:</strong>
+                <p>Not needed - will be auto-filled after upload based on actual images</p>
               </div>
 
               <div className="instruction-item">
-                <strong>✓ No Duplicates:</strong>
-                <p>Each apple must be unique (ACCESSION + CULTIVAR_NAME combination)</p>
+                <strong>✓ Duplicate Detection:</strong>
+                <p>System will check if apples already exist and ask what you want to do</p>
+              </div>
+
+              <div className="instruction-item">
+                <strong>✓ Validation:</strong>
+                <p>All rows with missing fields will be listed before upload</p>
               </div>
             </div>
 
@@ -643,7 +775,7 @@ export default function CreateApple() {
               </div>
             )}
 
-            {error && <div className="error-box"><p>{error}</p></div>}
+            {error && <div className="error-box" style={{ whiteSpace: 'pre-line' }}><p>{error}</p></div>}
 
             <div className="navigation-buttons">
               <button className="btn-secondary" onClick={handleBackToStart}>
@@ -668,19 +800,20 @@ export default function CreateApple() {
               <h3>Image Naming Convention</h3>
              
               <div className="instruction-item">
-                <strong>✓ Recommended Format:</strong>
-                <p><code>AccessionNumber_CultivarName.jpg</code></p>
-                <p>Example: <code>MAL0100_Honeycrisp.jpg</code></p>
+                <strong>✓ Recommended - Use ACCESSION:</strong>
+                <p><code>MAL0100.jpg</code> or <code>MAL0100_1.jpg</code>, <code>MAL0100_2.jpg</code></p>
+                <p className="success-text">✅ Works with ALL cultivar names, including special characters!</p>
               </div>
 
               <div className="instruction-item">
-                <strong>✓ Alternative Formats:</strong>
-                <p><code>MAL0100.jpg</code> or <code>Honeycrisp.jpg</code></p>
+                <strong>✓ Alternative - Clean Cultivar Name:</strong>
+                <p>For "Heyer #6": <code>MAL0100_Heyer_6.jpg</code> (replace # with _)</p>
+                <p>For "King": <code>MAL0101_King.jpg</code></p>
               </div>
 
               <div className="instruction-item">
-                <strong>✓ Multiple Images:</strong>
-                <p>Add numbers: <code>MAL0100_1.jpg</code>, <code>MAL0100_2.jpg</code></p>
+                <strong>✓ Symbol Handling:</strong>
+                <p>System automatically handles all symbols (#, &, /, etc.) in matching</p>
               </div>
 
               <div className="instruction-item">
@@ -722,93 +855,199 @@ export default function CreateApple() {
         {/* STEP 3: REVIEW & SAVE */}
         {step === 3 && (
           <div className="step">
-            <h2><CheckCircle size={28} /> Review and Save</h2>
-           
-            {/* Statistics */}
-            <div className="stats-grid">
-              <div className="stat-card success">
-                <div className="stat-number">{stats.matched}</div>
-                <div className="stat-label">✓ Matched</div>
-              </div>
-              <div className="stat-card warning">
-                <div className="stat-number">{stats.unmatchedImages}</div>
-                <div className="stat-label">⚠ Unmatched Images</div>
-              </div>
-              <div className="stat-card error">
-                <div className="stat-number">{unmatchedApples.length - Object.keys(manualMatches).filter(k => manualMatches[k]).length}</div>
-                <div className="stat-label">⚠ Unmatched Apples</div>
-              </div>
-            </div>
+            {/* Show duplicate resolution if duplicates exist */}
+            {duplicates.length > 0 ? (
+              <div>
+                <h2><AlertCircle size={28} style={{ color: '#f59e0b' }} /> Duplicates Found</h2>
+                
+                <div className="info-box" style={{ background: '#fef3c7', borderColor: '#f59e0b', marginBottom: '20px' }}>
+                  <p><strong>⚠️ Found {duplicates.length} apple(s) that already exist in the database.</strong></p>
+                  <p>Please choose what to do with each duplicate:</p>
+                </div>
 
-            {/* Manual Matching */}
-            {unmatchedApples.length > 0 && (
-              <div className="manual-matching-section">
-                <h3><AlertCircle size={20} /> Manual Matching</h3>
-                <p>Select images for these cultivars (or leave blank):</p>
-               
-                {unmatchedApples.map((item) => (
-                  <div key={item.appleIndex} className="match-item">
-                    <strong>{item.accessionNumber} - {item.cultivarName}</strong>
-                    {item.expectedCount > 1 && (
-                      <span className="expected-count"> (expects {item.expectedCount} images)</span>
-                    )}
-                    <select
-                      value={manualMatches[item.appleIndex] || ''}
-                      onChange={(e) => handleManualMatch(item.appleIndex, e.target.value)}
-                      className="match-select"
-                    >
-                      <option value="">-- No Image (Skip) --</option>
-                      {unmatchedImages.map((img, imgIndex) => (
-                        <option key={imgIndex} value={img.name}>{img.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Matched Preview */}
-            {matchedData.length > 0 && (
-              <div className="matched-preview">
-                <h3>✓ Successfully Matched ({matchedData.length})</h3>
-                <div className="preview-grid">
-                  {matchedData.slice(0, 6).map((item, index) => (
-                    <div key={index} className="preview-item">
-                      <img src={item.images[0].url} alt={item.cultivarName} />
-                      <div className="preview-name">
-                        {item.accessionNumber} - {item.cultivarName}
-                        <br/>
-                        <small>Images: {item.actualCount}/{item.expectedCount}</small>
+                <div className="duplicates-list">
+                  {duplicates.map((dup, index) => (
+                    <div key={index} className="duplicate-item" style={{ 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      padding: '16px', 
+                      marginBottom: '12px',
+                      background: '#f9fafb'
+                    }}>
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong>{dup.accession} - {dup.cultivar_name}</strong>
+                        <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
+                          Already exists in database (uploaded: {new Date(dup.createdAt).toLocaleDateString()})
+                        </p>
+                      </div>
+                      
+                      <div className="duplicate-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'replace' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'replace')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'replace' ? '#3b82f6' : 'white',
+                            borderColor: duplicateResolutions[index] === 'replace' ? '#3b82f6' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'replace' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <RefreshCw size={16} />
+                          Replace
+                        </button>
+                        
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'duplicate' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'duplicate')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'duplicate' ? '#10b981' : 'white',
+                            borderColor: duplicateResolutions[index] === 'duplicate' ? '#10b981' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'duplicate' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Copy size={16} />
+                          Create Duplicate
+                        </button>
+                        
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'skip' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'skip')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'skip' ? '#6b7280' : 'white',
+                            borderColor: duplicateResolutions[index] === 'skip' ? '#6b7280' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'skip' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <XCircle size={16} />
+                          Skip
+                        </button>
                       </div>
                     </div>
                   ))}
-                  {matchedData.length > 6 && (
-                    <div className="preview-more">
-                      +{matchedData.length - 6} more
+                </div>
+
+                <div className="navigation-buttons" style={{ marginTop: '24px' }}>
+                  <button className="btn-secondary" onClick={handleBackToStart}>
+                    <ArrowLeft size={18} /> Cancel
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleResolveDuplicates}
+                    disabled={loading}
+                  >
+                    {loading ? '⏳ Processing...' : <>✓ Proceed with Selections</>}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2><CheckCircle size={28} /> Review and Save</h2>
+           
+                {/* Statistics */}
+                <div className="stats-grid">
+                  <div className="stat-card success">
+                    <div className="stat-number">{stats.matched}</div>
+                    <div className="stat-label">✓ Matched</div>
+                  </div>
+                  <div className="stat-card warning">
+                    <div className="stat-number">{stats.unmatchedImages}</div>
+                    <div className="stat-label">⚠ Unmatched Images</div>
+                  </div>
+                  <div className="stat-card error">
+                    <div className="stat-number">{unmatchedApples.length - Object.keys(manualMatches).filter(k => manualMatches[k]).length}</div>
+                    <div className="stat-label">⚠ Unmatched Apples</div>
+                  </div>
+                </div>
+
+                {/* Manual Matching */}
+                {unmatchedApples.length > 0 && (
+                  <div className="manual-matching-section">
+                    <h3><AlertCircle size={20} /> Manual Matching</h3>
+                    <p>Select images for these cultivars (or leave blank):</p>
+               
+                    {unmatchedApples.map((item) => (
+                      <div key={item.appleIndex} className="match-item">
+                        <strong>{item.accessionNumber} - {item.cultivarName}</strong>
+                        <select
+                          value={manualMatches[item.appleIndex] || ''}
+                          onChange={(e) => handleManualMatch(item.appleIndex, e.target.value)}
+                          className="match-select"
+                        >
+                          <option value="">-- No Image (Skip) --</option>
+                          {unmatchedImages.map((img, imgIndex) => (
+                            <option key={imgIndex} value={img.name}>{img.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Matched Preview */}
+                {matchedData.length > 0 && (
+                  <div className="matched-preview">
+                    <h3>✓ Successfully Matched ({matchedData.length})</h3>
+                    <div className="preview-grid">
+                      {matchedData.slice(0, 6).map((item, index) => (
+                        <div key={index} className="preview-item">
+                          <img src={item.images[0].url} alt={item.cultivarName} />
+                          <div className="preview-name">
+                            {item.accessionNumber} - {item.cultivarName}
+                            <br/>
+                            <small>{item.imageCount} image(s)</small>
+                          </div>
+                        </div>
+                      ))}
+                      {matchedData.length > 6 && (
+                        <div className="preview-more">
+                          +{matchedData.length - 6} more
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
+            
+                <div className="info-box" style={{ marginTop: '20px' }}>
+                  <p><strong>ℹ️ Ready to save:</strong></p>
+                  <p>• {matchedData.reduce((sum, item) => sum + item.imageCount, 0)} total images matched</p>
+                  <p>• {matchedData.length + unmatchedApples.length} total apples</p>
+                  <p>• IMAGES column will be auto-populated based on actual uploaded images</p>
+                </div>
+
+                <div className="navigation-buttons">
+                  <button className="btn-secondary" onClick={handleBackToStart}>
+                    <ArrowLeft size={18} /> Start Over
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleSaveToDatabase}
+                    disabled={loading}
+                  >
+                    {loading ? '⏳ Saving...' : <>💾 Save to Database</>}
+                  </button>
                 </div>
               </div>
             )}
-            
-            <div className="info-box" style={{ marginTop: '20px' }}>
-              <p><strong>ℹ️ Ready to save:</strong></p>
-              <p>• {matchedData.reduce((sum, item) => sum + item.actualCount, 0)} total images matched</p>
-              <p>• {matchedData.length + unmatchedApples.length} total apples</p>
-            </div>
-
-            <div className="navigation-buttons">
-              <button className="btn-secondary" onClick={handleBackToStart}>
-                <ArrowLeft size={18} /> Start Over
-              </button>
-              <button
-                className="btn-primary"
-                onClick={handleSaveToDatabase}
-                disabled={loading}
-              >
-                {loading ? '⏳ Saving...' : <>💾 Save to Database</>}
-              </button>
-            </div>
           </div>
         )}
       </div>
