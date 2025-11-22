@@ -1,81 +1,139 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, Save, X, Image as ImageIcon } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Save, 
+  X, 
+  Image as ImageIcon, 
+  Plus, 
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  CheckCircle2,
+  AlertCircle
+} from 'lucide-react';
 import './SingleApple.css';
 
 export default function SingleApple() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
   
+  // Mandatory fields
+  const [accession, setAccession] = useState('');
+  const [cultivarName, setCultivarName] = useState('');
+  
+  // Template fields
   const [appleData, setAppleData] = useState({
+    // Core Identification
+    site_id: '',
+    prefix_acp: '',
     acno: '',
-    accession: '',
-    acp: '',
-    sd_unique: 'False',
-    ivt: 'PL',
-    sd_moved: 'False',
-    sd_new: 'False',
-    whynull: '',
-    m_transfer_history: '',
-    acimpt: '',
-    e_locality: '',
-    loc1: '',
-    loc2: '',
-    loc3: '',
-    loc4: '',
-    e_location_field: '',
-    e_location_greenhouse: '',
-    e_origin_country: '',
-    e_origin_province: '',
-    e_origin_city: '',
-    e_origin_address_1: '',
-    e_origin_address_2: '',
-    e_origin_postal_code: '',
-    e_lath: '',
-    e_latd: '',
-    e_latm: '',
-    e_lats: '',
-    e_lonh: '',
-    e_lond: '',
-    e_lonm: '',
-    e_lons: '',
-    e_elev: '',
-    e_habitat: '',
-    site: 'CCG',
-    taxno: '',
-    sitecmt: '',
-    cultivar_name: '',
-    e_genus: 'Malus',
-    e_species: 'domestica',
-    e_subspecies: '',
-    plant_type: 'apple',
+    label_name: '',
+    
+    // Taxonomic Information
     family: 'Rosaceae',
-    e_pedigree: '',
-    e_collector: '',
-    e_breeder: '',
-    e_breeder_or_collector: '',
-    e_origin_institute: '',
-    distribute: 'True',
-    status: 'AVAIL',
-    e_alive: 'True',
-    statcmt: '',
-    uniform: '',
-    e_released: '',
-    e_datefmt: '',
-    e_date_collected: '',
-    e_quant: '',
-    e_units: '',
-    e_cform: '',
-    e_plants_collected: '',
+    genus: 'Malus',
+    species: 'domestica',
+    taxon: '',
+    
+    // Origin and Location
+    country: '',
+    province_state: '',
+    habitat: '',
+    location_section_1: '',
+    location_section_2: '',
+    location_section_3: '',
+    location_section_4: '',
+    
+    // People and Organizations
+    breeder_or_collector: '',
+    cooperator: '',
+    cooperator_new: '',
+    
+    // Plant Classification
+    inventory_type: '',
+    inventory_maintenance_policy: '',
+    plant_type: 'apple',
+    life_form: '',
+    is_distributable: '',
+    
+    // Fruit Characteristics
+    fruitshape_115057: '',
+    fruitlgth_115156: '',
+    fruitwidth_115157: '',
+    frtweight_115121: '',
+    frtstemthk_115127: '',
+    frttexture_115123: '',
+    frtstmlgth_115158: '',
+    frtflshoxi_115129: '',
+    
+    // Seed Characteristics
+    seedcolor_115086: '',
+    ssize_quantity_of_seed: '',
+    seedlength_115163: '',
+    seedwidth_115164: '',
+    seednumber_115087: '',
+    seedshape_115167: '',
+    
+    // Phenology
+    first_bloom_date: '',
+    full_bloom_date: '',
+    
+    // Visual and Quality Traits
+    colour: '',
+    density: '',
+    fireblight_rating: '',
+    
+    // Descriptive Information
     cmt: '',
-    e_cmt: ''
+    narativekeyword: '',
+    full_narative: '',
+    pedigree_description: '',
+    
+    // Status and Release Information
+    availability_status: '',
+    ipr_type: '',
+    level_of_improvement: '',
+    released_date: '',
+    released_date_format: ''
+  });
+
+  // Custom fields
+  const [customFields, setCustomFields] = useState([{ fieldName: '', fieldValue: '' }]);
+
+  // Collapsible sections state
+  const [expandedSections, setExpandedSections] = useState({
+    mandatory: true,
+    identification: false,
+    taxonomic: false,
+    location: false,
+    people: false,
+    classification: false,
+    fruit: false,
+    seed: false,
+    phenology: false,
+    quality: false,
+    descriptive: false,
+    status: false,
+    custom: false,
+    images: false
   });
 
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Toggle section expansion
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -83,6 +141,24 @@ export default function SingleApple() {
       ...prevData, 
       [name]: value 
     }));
+  };
+
+  // Add new custom field row
+  const addCustomField = () => {
+    setCustomFields([...customFields, { fieldName: '', fieldValue: '' }]);
+  };
+
+  // Remove custom field row
+  const removeCustomField = (index) => {
+    const updated = customFields.filter((_, i) => i !== index);
+    setCustomFields(updated);
+  };
+
+  // Handle custom field changes
+  const handleCustomFieldChange = (index, field, value) => {
+    const updated = [...customFields];
+    updated[index][field] = value;
+    setCustomFields(updated);
   };
 
   const handleImageChange = (e) => {
@@ -94,7 +170,7 @@ export default function SingleApple() {
       return;
     }
 
-    if (!appleData.accession) {
+    if (!accession) {
       setError('Please enter Accession Number first to upload images');
       e.target.value = '';
       return;
@@ -103,7 +179,7 @@ export default function SingleApple() {
     const startIndex = images.length;
     const renamedFiles = files.map((file, index) => {
       const extension = file.name.split('.').pop();
-      const newName = `${appleData.accession}_${startIndex + index + 1}.${extension}`;
+      const newName = `${accession}_${startIndex + index + 1}.${extension}`;
       return new File([file], newName, { type: file.type });
     });
 
@@ -133,919 +209,1304 @@ export default function SingleApple() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!appleData.accession) {
-      setError('Accession Number is required.');
+    if (!accession.trim()) {
+      setError('❌ Accession is required');
       return;
     }
-    if (!appleData.cultivar_name) {
-      setError('Cultivar Name is required.');
+    if (!cultivarName.trim()) {
+      setError('❌ Cultivar Name is required');
       return;
     }
 
     setLoading(true);
     setError('');
+    setSuccess('');
 
     const formData = new FormData();
-    formData.append('appleData', JSON.stringify(appleData));
+    
+    // Combine all data
+    const submitData = {
+      accession: accession.trim(),
+      cultivar_name: cultivarName.trim(),
+      ...appleData
+    };
+
+    // Add custom fields
+    const validCustomFields = customFields.filter(
+      cf => cf.fieldName.trim() && cf.fieldValue.trim()
+    );
+    
+    if (validCustomFields.length > 0) {
+      const customFieldsObj = {};
+      validCustomFields.forEach(cf => {
+        customFieldsObj[cf.fieldName.trim()] = cf.fieldValue.trim();
+      });
+      submitData.customFields = customFieldsObj;
+    }
+
+    formData.append('appleData', JSON.stringify(submitData));
     
     images.forEach(image => {
       formData.append('images', image);
     });
 
     try {
+      const adminToken = localStorage.getItem('adminToken');
+      if (!adminToken) {
+        setError('❌ You must be logged in as admin to upload apples.');
+        setTimeout(() => navigate('/signup-login'), 2000);
+        return;
+      }
+
       const response = await axios.post('http://localhost:5000/api/apples/single-upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${adminToken}`
         },
       });
 
-      alert(`✅ Successfully created ${response.data.apple.cultivar_name}!`);
+      setSuccess(`✅ Successfully created ${response.data.apple.cultivar_name}!`);
       imagePreviews.forEach(url => URL.revokeObjectURL(url));
-      navigate('/dashboard');
+      
+      setTimeout(() => {
+        navigate('/library');
+      }, 2000);
 
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Failed to create apple.';
-      setError(errorMessage);
+      setError(`❌ ${errorMessage}`);
       console.error('Single upload error:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  // Section explanations
+  const sectionInfo = {
+    mandatory: "Required fields that must be filled for every apple entry. These serve as unique identifiers.",
+    identification: "Core identification codes and labels used for cataloging and tracking apple varieties.",
+    taxonomic: "Scientific classification information including family, genus, and species.",
+    location: "Geographic origin and location details where the variety was discovered or cultivated.",
+    people: "Information about breeders, collectors, and organizations involved with this variety.",
+    classification: "Plant classification details including inventory type and distribution status.",
+    fruit: "Detailed physical measurements and characteristics of the fruit.",
+    seed: "Seed characteristics including color, size, shape, and quantity.",
+    phenology: "Timing of biological events such as bloom dates throughout the growing season.",
+    quality: "Visual appearance and quality traits including color, density, and disease resistance.",
+    descriptive: "Narrative descriptions, comments, and pedigree information.",
+    status: "Current status, availability, and release information for this variety.",
+    custom: "Add your own custom fields with any heading and content you need.",
+    images: "Upload high-quality images of the apple variety. Images are automatically renamed based on accession number."
+  };
+
   return (
-    <div className="single-apple-page">
-      <div className="single-apple-card">
-        <div className="single-apple-header">
+    <div className="single-apple-page-pro">
+      <div className="single-apple-container-pro">
+        
+        {/* Header */}
+        <div className="header-pro">
           <button 
-            className="back-btn-single"
+            className="back-btn-pro"
             onClick={() => navigate('/create-apple')}
             type="button"
           >
             <ArrowLeft size={20} />
-            Back
+            <span>Back</span>
           </button>
-          <h1>🍎 Create New Apple Variety</h1>
-          <p className="subtitle">Enter details manually and upload images</p>
+          
+          <div className="header-content-pro">
+            <h1 className="title-pro">🍎 Create New Apple Variety</h1>
+            <p className="subtitle-pro">Complete the form below using the standardized template</p>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="single-apple-form">
+        {/* Alert Messages */}
+        {error && (
+          <div className="alert-pro alert-error-pro">
+            <AlertCircle size={20} />
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="alert-close-pro">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
+        {success && (
+          <div className="alert-pro alert-success-pro">
+            <CheckCircle2 size={20} />
+            <span>{success}</span>
+          </div>
+        )}
+
+        {/* Progress Indicator */}
+        <div className="progress-indicator-pro">
+          <div className="progress-step-pro">
+            <div className={`progress-circle-pro ${accession && cultivarName ? 'completed' : 'active'}`}>
+              {accession && cultivarName ? <CheckCircle2 size={16} /> : '1'}
+            </div>
+            <span className="progress-label-pro">Required Info</span>
+          </div>
+          <div className="progress-line-pro"></div>
+          <div className="progress-step-pro">
+            <div className={`progress-circle-pro ${Object.values(appleData).some(v => v) ? 'active' : ''}`}>2</div>
+            <span className="progress-label-pro">Details</span>
+          </div>
+          <div className="progress-line-pro"></div>
+          <div className="progress-step-pro">
+            <div className={`progress-circle-pro ${images.length > 0 ? 'active' : ''}`}>3</div>
+            <span className="progress-label-pro">Images</span>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="form-pro">
           
-          <div className="form-section-group">
-            <h2 className="section-title">📋 Identity & Inventory</h2>
+          {/* MANDATORY SECTION */}
+          <div className="section-card-pro mandatory-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('mandatory')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">
+                  <span className="required-badge-pro">REQUIRED</span>
+                  Mandatory Fields
+                </h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.mandatory);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.mandatory ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
             
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="accession">Accession Number *</label>
-                <input
-                  type="text"
-                  id="accession"
-                  name="accession"
-                  value={appleData.accession}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  required
-                />
-                <small>Used for image naming</small>
-              </div>
+            {expandedSections.mandatory && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro mandatory-field-pro">
+                    <label className="label-pro">
+                      Accession <span className="required-star-pro">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={accession}
+                      onChange={(e) => setAccession(e.target.value)}
+                      className="input-pro"
+                      placeholder="e.g., MAL0100"
+                      required
+                    />
+                    <small className="help-text-pro">Unique identifier for this apple variety</small>
+                  </div>
 
-              <div className="form-field">
-                <label htmlFor="acno">AC Number</label>
-                <input
-                  type="text"
-                  id="acno"
-                  name="acno"
-                  value={appleData.acno}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="acp">Accession Prefix</label>
-                <input
-                  type="text"
-                  id="acp"
-                  name="acp"
-                  value={appleData.acp}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="ivt">Inventory Type</label>
-                <select
-                  id="ivt"
-                  name="ivt"
-                  value={appleData.ivt}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="PL">PL - Plant</option>
-                  <option value="SE">SE - Seed</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="sd_unique">SD Unique</label>
-                <select
-                  id="sd_unique"
-                  name="sd_unique"
-                  value={appleData.sd_unique}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="False">False</option>
-                  <option value="True">True</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="sd_moved">SD Moved</label>
-                <select
-                  id="sd_moved"
-                  name="sd_moved"
-                  value={appleData.sd_moved}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="False">False</option>
-                  <option value="True">True</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="sd_new">SD New</label>
-                <select
-                  id="sd_new"
-                  name="sd_new"
-                  value={appleData.sd_new}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="False">False</option>
-                  <option value="True">True</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-field">
-              <label htmlFor="m_transfer_history">Transfer History</label>
-              <textarea
-                id="m_transfer_history"
-                name="m_transfer_history"
-                value={appleData.m_transfer_history}
-                onChange={handleChange}
-                className="single-apple-input"
-                rows="3"
-              />
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">🌍 Geography & Origin</h2>
-            
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_origin_country">Country</label>
-                <input
-                  type="text"
-                  id="e_origin_country"
-                  name="e_origin_country"
-                  value={appleData.e_origin_country}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  placeholder="e.g., CAN, USA"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_origin_province">Province/State</label>
-                <input
-                  type="text"
-                  id="e_origin_province"
-                  name="e_origin_province"
-                  value={appleData.e_origin_province}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_origin_city">City</label>
-                <input
-                  type="text"
-                  id="e_origin_city"
-                  name="e_origin_city"
-                  value={appleData.e_origin_city}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_origin_address_1">Address Line 1</label>
-                <input
-                  type="text"
-                  id="e_origin_address_1"
-                  name="e_origin_address_1"
-                  value={appleData.e_origin_address_1}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_origin_address_2">Address Line 2</label>
-                <input
-                  type="text"
-                  id="e_origin_address_2"
-                  name="e_origin_address_2"
-                  value={appleData.e_origin_address_2}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_origin_postal_code">Postal Code</label>
-                <input
-                  type="text"
-                  id="e_origin_postal_code"
-                  name="e_origin_postal_code"
-                  value={appleData.e_origin_postal_code}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_locality">Locality</label>
-                <input
-                  type="text"
-                  id="e_locality"
-                  name="e_locality"
-                  value={appleData.e_locality}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <h3 className="subsection-title">Location Details</h3>
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="site">Site</label>
-                <input
-                  type="text"
-                  id="site"
-                  name="site"
-                  value={appleData.site}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_location_field">Field Location</label>
-                <input
-                  type="text"
-                  id="e_location_field"
-                  name="e_location_field"
-                  value={appleData.e_location_field}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_location_greenhouse">Greenhouse Location</label>
-                <input
-                  type="text"
-                  id="e_location_greenhouse"
-                  name="e_location_greenhouse"
-                  value={appleData.e_location_greenhouse}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="loc1">Location 1</label>
-                <input
-                  type="text"
-                  id="loc1"
-                  name="loc1"
-                  value={appleData.loc1}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="loc2">Location 2</label>
-                <input
-                  type="text"
-                  id="loc2"
-                  name="loc2"
-                  value={appleData.loc2}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="loc3">Location 3</label>
-                <input
-                  type="text"
-                  id="loc3"
-                  name="loc3"
-                  value={appleData.loc3}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="loc4">Location 4</label>
-                <input
-                  type="text"
-                  id="loc4"
-                  name="loc4"
-                  value={appleData.loc4}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <h3 className="subsection-title">Coordinates</h3>
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_lath">Latitude Hemisphere</label>
-                <select
-                  id="e_lath"
-                  name="e_lath"
-                  value={appleData.e_lath}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="">Select</option>
-                  <option value="N">N - North</option>
-                  <option value="S">S - South</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_latd">Latitude Degrees</label>
-                <input
-                  type="number"
-                  id="e_latd"
-                  name="e_latd"
-                  value={appleData.e_latd}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_latm">Latitude Minutes</label>
-                <input
-                  type="number"
-                  id="e_latm"
-                  name="e_latm"
-                  value={appleData.e_latm}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_lats">Latitude Seconds</label>
-                <input
-                  type="number"
-                  id="e_lats"
-                  name="e_lats"
-                  value={appleData.e_lats}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_lonh">Longitude Hemisphere</label>
-                <select
-                  id="e_lonh"
-                  name="e_lonh"
-                  value={appleData.e_lonh}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="">Select</option>
-                  <option value="E">E - East</option>
-                  <option value="W">W - West</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_lond">Longitude Degrees</label>
-                <input
-                  type="number"
-                  id="e_lond"
-                  name="e_lond"
-                  value={appleData.e_lond}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_lonm">Longitude Minutes</label>
-                <input
-                  type="number"
-                  id="e_lonm"
-                  name="e_lonm"
-                  value={appleData.e_lonm}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_lons">Longitude Seconds</label>
-                <input
-                  type="number"
-                  id="e_lons"
-                  name="e_lons"
-                  value={appleData.e_lons}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_elev">Elevation</label>
-                <input
-                  type="text"
-                  id="e_elev"
-                  name="e_elev"
-                  value={appleData.e_elev}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  placeholder="meters"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_habitat">Habitat</label>
-                <input
-                  type="text"
-                  id="e_habitat"
-                  name="e_habitat"
-                  value={appleData.e_habitat}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="taxno">Tax Number</label>
-                <input
-                  type="text"
-                  id="taxno"
-                  name="taxno"
-                  value={appleData.taxno}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="sitecmt">Site Comment</label>
-                <input
-                  type="text"
-                  id="sitecmt"
-                  name="sitecmt"
-                  value={appleData.sitecmt}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">🧬 Biology & Taxonomy</h2>
-            
-            <div className="form-field">
-              <label htmlFor="cultivar_name">Cultivar Name *</label>
-              <input
-                type="text"
-                id="cultivar_name"
-                name="cultivar_name"
-                value={appleData.cultivar_name}
-                onChange={handleChange}
-                className="single-apple-input"
-                required
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_genus">Genus</label>
-                <input
-                  type="text"
-                  id="e_genus"
-                  name="e_genus"
-                  value={appleData.e_genus}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_species">Species</label>
-                <input
-                  type="text"
-                  id="e_species"
-                  name="e_species"
-                  value={appleData.e_species}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_subspecies">Subspecies</label>
-                <input
-                  type="text"
-                  id="e_subspecies"
-                  name="e_subspecies"
-                  value={appleData.e_subspecies}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="family">Family</label>
-                <input
-                  type="text"
-                  id="family"
-                  name="family"
-                  value={appleData.family}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="plant_type">Plant Type</label>
-                <input
-                  type="text"
-                  id="plant_type"
-                  name="plant_type"
-                  value={appleData.plant_type}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-field">
-              <label htmlFor="e_pedigree">Pedigree</label>
-              <textarea
-                id="e_pedigree"
-                name="e_pedigree"
-                value={appleData.e_pedigree}
-                onChange={handleChange}
-                className="single-apple-input"
-                rows="3"
-                placeholder="Parentage and breeding history"
-              />
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">👥 People & Custodians</h2>
-            
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_breeder">Breeder</label>
-                <input
-                  type="text"
-                  id="e_breeder"
-                  name="e_breeder"
-                  value={appleData.e_breeder}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_collector">Collector</label>
-                <input
-                  type="text"
-                  id="e_collector"
-                  name="e_collector"
-                  value={appleData.e_collector}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_breeder_or_collector">Breeder or Collector</label>
-                <select
-                  id="e_breeder_or_collector"
-                  name="e_breeder_or_collector"
-                  value={appleData.e_breeder_or_collector}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="">Select</option>
-                  <option value="B">B - Breeder</option>
-                  <option value="C">C - Collector</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_origin_institute">Origin Institute</label>
-                <input
-                  type="text"
-                  id="e_origin_institute"
-                  name="e_origin_institute"
-                  value={appleData.e_origin_institute}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">📅 Status & Dates</h2>
-            
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="status">Status</label>
-                <select
-                  id="status"
-                  name="status"
-                  value={appleData.status}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="AVAIL">AVAIL - Available</option>
-                  <option value="UNAVAIL">UNAVAIL - Unavailable</option>
-                  <option value="PEND">PEND - Pending</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_alive">Alive Status</label>
-                <select
-                  id="e_alive"
-                  name="e_alive"
-                  value={appleData.e_alive}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="True">True</option>
-                  <option value="False">False</option>
-                </select>
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="distribute">Distribute</label>
-                <select
-                  id="distribute"
-                  name="distribute"
-                  value={appleData.distribute}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                >
-                  <option value="True">True</option>
-                  <option value="False">False</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_released">Year Released</label>
-                <input
-                  type="text"
-                  id="e_released"
-                  name="e_released"
-                  value={appleData.e_released}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  placeholder="e.g., 1936"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_date_collected">Date Collected</label>
-                <input
-                  type="date"
-                  id="e_date_collected"
-                  name="e_date_collected"
-                  value={appleData.e_date_collected}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_datefmt">Date Format</label>
-                <input
-                  type="text"
-                  id="e_datefmt"
-                  name="e_datefmt"
-                  value={appleData.e_datefmt}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  placeholder="e.g., YYYYMMDD"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="uniform">Uniform</label>
-                <input
-                  type="text"
-                  id="uniform"
-                  name="uniform"
-                  value={appleData.uniform}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">📦 Collection Details</h2>
-            
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_quant">Quantity</label>
-                <input
-                  type="number"
-                  id="e_quant"
-                  name="e_quant"
-                  value={appleData.e_quant}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_units">Units</label>
-                <input
-                  type="text"
-                  id="e_units"
-                  name="e_units"
-                  value={appleData.e_units}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                  placeholder="e.g., plants, seeds"
-                />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <div className="form-field">
-                <label htmlFor="e_cform">Collection Form</label>
-                <input
-                  type="text"
-                  id="e_cform"
-                  name="e_cform"
-                  value={appleData.e_cform}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-
-              <div className="form-field">
-                <label htmlFor="e_plants_collected">Plants Collected</label>
-                <input
-                  type="number"
-                  id="e_plants_collected"
-                  name="e_plants_collected"
-                  value={appleData.e_plants_collected}
-                  onChange={handleChange}
-                  className="single-apple-input"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="form-section-group">
-            <h2 className="section-title">📸 Images</h2>
-            
-            <div className="form-field">
-              <label htmlFor="images">Upload Images (Max 10)</label>
-              <small>Images will be renamed using the Accession Number (e.g., {appleData.accession || 'ACC-123'}_1.jpg)</small>
-              <input
-                type="file"
-                id="images"
-                name="images"
-                onChange={handleImageChange}
-                ref={fileInputRef}
-                multiple
-                accept="image/jpeg, image/png, image/webp"
-                className="single-apple-input-file"
-                disabled={!appleData.accession}
-              />
-              {!appleData.accession && (
-                <small className="error-message-inline">Enter Accession Number in Identity section to enable upload.</small>
-              )}
-            </div>
-
-            <div className="image-preview-grid">
-              {imagePreviews.map((preview, index) => (
-                <div key={index} className="image-preview-item">
-                  <img src={preview} alt={`Preview ${index + 1}`} />
-                  <button
-                    type="button"
-                    className="remove-image-btn"
-                    onClick={() => removeImage(index)}
-                  >
-                    <X size={16} />
-                  </button>
-                  <span className="image-name-label">{images[index]?.name}</span>
+                  <div className="form-group-pro mandatory-field-pro">
+                    <label className="label-pro">
+                      Cultivar Name <span className="required-star-pro">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cultivarName}
+                      onChange={(e) => setCultivarName(e.target.value)}
+                      className="input-pro"
+                      placeholder="e.g., Honeycrisp"
+                      required
+                    />
+                    <small className="help-text-pro">Common name of the apple variety</small>
+                  </div>
                 </div>
-              ))}
-              {imagePreviews.length === 0 && (
-                <div className="image-preview-placeholder">
-                  <ImageIcon size={48} />
-                  <p>No images selected</p>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
-          <div className="form-section-group">
-            <h2 className="section-title">📝 Metadata</h2>
+          {/* CORE IDENTIFICATION */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('identification')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">📋 Core Identification</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.identification);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.identification ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
             
-            <div className="form-field">
-              <label htmlFor="cmt">Comment</label>
-              <textarea
-                id="cmt"
-                name="cmt"
-                value={appleData.cmt}
-                onChange={handleChange}
-                className="single-apple-input"
-                rows="4"
-              />
-            </div>
+            {expandedSections.identification && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Site ID</label>
+                    <input
+                      type="text"
+                      name="site_id"
+                      value={appleData.site_id}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Site identifier"
+                    />
+                  </div>
 
-            <div className="form-field">
-              <label htmlFor="e_cmt">Electronic Comment</label>
-              <textarea
-                id="e_cmt"
-                name="e_cmt"
-                value={appleData.e_cmt}
-                onChange={handleChange}
-                className="single-apple-input"
-                rows="4"
-              />
-            </div>
+                  <div className="form-group-pro">
+                    <label className="label-pro">Prefix (ACP)</label>
+                    <input
+                      type="text"
+                      name="prefix_acp"
+                      value={appleData.prefix_acp}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Accession prefix code"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">ACNO</label>
+                    <input
+                      type="text"
+                      name="acno"
+                      value={appleData.acno}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Accession number"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Label Name</label>
+                    <input
+                      type="text"
+                      name="label_name"
+                      value={appleData.label_name}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Display label name"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="form-actions-footer">
-            {error && <p className="error-message">{error}</p>}
+          {/* TAXONOMIC INFORMATION */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('taxonomic')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🧬 Taxonomic Information</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.taxonomic);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.taxonomic ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.taxonomic && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Family</label>
+                    <input
+                      type="text"
+                      name="family"
+                      value={appleData.family}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Rosaceae"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Genus</label>
+                    <input
+                      type="text"
+                      name="genus"
+                      value={appleData.genus}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Malus"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Species</label>
+                    <input
+                      type="text"
+                      name="species"
+                      value={appleData.species}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., domestica"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Taxon</label>
+                    <input
+                      type="text"
+                      name="taxon"
+                      value={appleData.taxon}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Full taxonomic name"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ORIGIN AND LOCATION */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('location')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🌍 Origin and Location</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.location);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.location ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.location && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Country</label>
+                    <input
+                      type="text"
+                      name="country"
+                      value={appleData.country}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Country of origin"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Province/State</label>
+                    <input
+                      type="text"
+                      name="province_state"
+                      value={appleData.province_state}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Province or state"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Habitat</label>
+                    <input
+                      type="text"
+                      name="habitat"
+                      value={appleData.habitat}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Natural habitat"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Location Section 1</label>
+                    <input
+                      type="text"
+                      name="location_section_1"
+                      value={appleData.location_section_1}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Location detail 1"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Location Section 2</label>
+                    <input
+                      type="text"
+                      name="location_section_2"
+                      value={appleData.location_section_2}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Location detail 2"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Location Section 3</label>
+                    <input
+                      type="text"
+                      name="location_section_3"
+                      value={appleData.location_section_3}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Location detail 3"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Location Section 4</label>
+                    <input
+                      type="text"
+                      name="location_section_4"
+                      value={appleData.location_section_4}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Location detail 4"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* PEOPLE AND ORGANIZATIONS */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('people')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">👥 People and Organizations</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.people);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.people ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.people && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Breeder or Collector</label>
+                    <input
+                      type="text"
+                      name="breeder_or_collector"
+                      value={appleData.breeder_or_collector}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Name of breeder or collector"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Cooperator</label>
+                    <input
+                      type="text"
+                      name="cooperator"
+                      value={appleData.cooperator}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Cooperating organization"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Cooperator (New)</label>
+                    <input
+                      type="text"
+                      name="cooperator_new"
+                      value={appleData.cooperator_new}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Updated cooperator info"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* PLANT CLASSIFICATION */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('classification')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🌱 Plant Classification</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.classification);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.classification ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.classification && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Inventory Type</label>
+                    <input
+                      type="text"
+                      name="inventory_type"
+                      value={appleData.inventory_type}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Type of inventory"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Inventory Maintenance Policy</label>
+                    <input
+                      type="text"
+                      name="inventory_maintenance_policy"
+                      value={appleData.inventory_maintenance_policy}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Maintenance policy"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Plant Type</label>
+                    <input
+                      type="text"
+                      name="plant_type"
+                      value={appleData.plant_type}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Type of plant"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Life Form</label>
+                    <input
+                      type="text"
+                      name="life_form"
+                      value={appleData.life_form}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Plant life form"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Is Distributable?</label>
+                    <select
+                      name="is_distributable"
+                      value={appleData.is_distributable}
+                      onChange={handleChange}
+                      className="input-pro"
+                    >
+                      <option value="">Select...</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* FRUIT CHARACTERISTICS */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('fruit')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🍎 Fruit Characteristics</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.fruit);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.fruit ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.fruit && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Shape (115057)</label>
+                    <input
+                      type="text"
+                      name="fruitshape_115057"
+                      value={appleData.fruitshape_115057}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Round, Oblong"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Length (115156)</label>
+                    <input
+                      type="text"
+                      name="fruitlgth_115156"
+                      value={appleData.fruitlgth_115156}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Length in mm"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Width (115157)</label>
+                    <input
+                      type="text"
+                      name="fruitwidth_115157"
+                      value={appleData.fruitwidth_115157}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Width in mm"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Weight (115121)</label>
+                    <input
+                      type="text"
+                      name="frtweight_115121"
+                      value={appleData.frtweight_115121}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Weight in grams"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Stem Thickness (115127)</label>
+                    <input
+                      type="text"
+                      name="frtstemthk_115127"
+                      value={appleData.frtstemthk_115127}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Thickness measurement"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Texture (115123)</label>
+                    <input
+                      type="text"
+                      name="frttexture_115123"
+                      value={appleData.frttexture_115123}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Crisp, Soft"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Stem Length (115158)</label>
+                    <input
+                      type="text"
+                      name="frtstmlgth_115158"
+                      value={appleData.frtstmlgth_115158}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Stem length"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fruit Flesh Oxidation (115129)</label>
+                    <input
+                      type="text"
+                      name="frtflshoxi_115129"
+                      value={appleData.frtflshoxi_115129}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Oxidation rate"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SEED CHARACTERISTICS */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('seed')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🌰 Seed Characteristics</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.seed);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.seed ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.seed && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Color (115086)</label>
+                    <input
+                      type="text"
+                      name="seedcolor_115086"
+                      value={appleData.seedcolor_115086}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Brown, Black"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Size / Quantity</label>
+                    <input
+                      type="text"
+                      name="ssize_quantity_of_seed"
+                      value={appleData.ssize_quantity_of_seed}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Size or quantity"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Length (115163)</label>
+                    <input
+                      type="text"
+                      name="seedlength_115163"
+                      value={appleData.seedlength_115163}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Length in mm"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Width (115164)</label>
+                    <input
+                      type="text"
+                      name="seedwidth_115164"
+                      value={appleData.seedwidth_115164}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Width in mm"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Number (115087)</label>
+                    <input
+                      type="text"
+                      name="seednumber_115087"
+                      value={appleData.seednumber_115087}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Number of seeds"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Seed Shape (115167)</label>
+                    <input
+                      type="text"
+                      name="seedshape_115167"
+                      value={appleData.seedshape_115167}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Shape description"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* PHENOLOGY */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('phenology')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">🌸 Phenology</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.phenology);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.phenology ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.phenology && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">First Bloom Date</label>
+                    <input
+                      type="text"
+                      name="first_bloom_date"
+                      value={appleData.first_bloom_date}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., April 15"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Full Bloom Date</label>
+                    <input
+                      type="text"
+                      name="full_bloom_date"
+                      value={appleData.full_bloom_date}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., April 20"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* VISUAL AND QUALITY TRAITS */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('quality')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">✨ Visual and Quality Traits</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.quality);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.quality ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.quality && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Colour</label>
+                    <input
+                      type="text"
+                      name="colour"
+                      value={appleData.colour}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Red, Green, Yellow"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Density</label>
+                    <input
+                      type="text"
+                      name="density"
+                      value={appleData.density}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Density measurement"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Fireblight Rating</label>
+                    <input
+                      type="text"
+                      name="fireblight_rating"
+                      value={appleData.fireblight_rating}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Resistance rating (1-5)"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* DESCRIPTIVE INFORMATION */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('descriptive')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">📝 Descriptive Information</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.descriptive);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.descriptive ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.descriptive && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro form-grid-full-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Comments (CMT)</label>
+                    <textarea
+                      name="cmt"
+                      value={appleData.cmt}
+                      onChange={handleChange}
+                      className="input-pro textarea-pro"
+                      rows="3"
+                      placeholder="General comments about this variety"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Narrative Keyword</label>
+                    <input
+                      type="text"
+                      name="narativekeyword"
+                      value={appleData.narativekeyword}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Keywords for narrative"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Full Narrative</label>
+                    <textarea
+                      name="full_narative"
+                      value={appleData.full_narative}
+                      onChange={handleChange}
+                      className="input-pro textarea-pro"
+                      rows="4"
+                      placeholder="Complete narrative description"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Pedigree Description</label>
+                    <textarea
+                      name="pedigree_description"
+                      value={appleData.pedigree_description}
+                      onChange={handleChange}
+                      className="input-pro textarea-pro"
+                      rows="3"
+                      placeholder="Parentage and breeding history"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* STATUS AND RELEASE */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('status')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">📊 Status and Release Information</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.status);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.status ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.status && (
+              <div className="section-content-pro">
+                <div className="form-grid-pro">
+                  <div className="form-group-pro">
+                    <label className="label-pro">Availability Status</label>
+                    <input
+                      type="text"
+                      name="availability_status"
+                      value={appleData.availability_status}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., Available, Limited"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">IPR Type</label>
+                    <input
+                      type="text"
+                      name="ipr_type"
+                      value={appleData.ipr_type}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Intellectual property rights"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Level of Improvement</label>
+                    <input
+                      type="text"
+                      name="level_of_improvement"
+                      value={appleData.level_of_improvement}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="Improvement level"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Released Date</label>
+                    <input
+                      type="text"
+                      name="released_date"
+                      value={appleData.released_date}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., 2020"
+                    />
+                  </div>
+
+                  <div className="form-group-pro">
+                    <label className="label-pro">Released Date Format</label>
+                    <input
+                      type="text"
+                      name="released_date_format"
+                      value={appleData.released_date_format}
+                      onChange={handleChange}
+                      className="input-pro"
+                      placeholder="e.g., YYYY"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* CUSTOM FIELDS */}
+          <div className="section-card-pro custom-section-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('custom')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">➕ Custom Fields</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.custom);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              <div className="section-actions-pro">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    addCustomField();
+                  }}
+                  className="add-btn-pro"
+                >
+                  <Plus size={16} />
+                  Add Field
+                </button>
+                {expandedSections.custom ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+              </div>
+            </div>
+            
+            {expandedSections.custom && (
+              <div className="section-content-pro">
+                <p className="section-description-pro">
+                  Add your own custom fields with any heading and content you need
+                </p>
+                {customFields.map((field, index) => (
+                  <div key={index} className="custom-field-row-pro">
+                    <input
+                      type="text"
+                      placeholder="Field Name (e.g., 'Taste Profile')"
+                      value={field.fieldName}
+                      onChange={(e) => handleCustomFieldChange(index, 'fieldName', e.target.value)}
+                      className="input-pro custom-name-pro"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Field Value (e.g., 'Sweet and crisp')"
+                      value={field.fieldValue}
+                      onChange={(e) => handleCustomFieldChange(index, 'fieldValue', e.target.value)}
+                      className="input-pro custom-value-pro"
+                    />
+                    {customFields.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeCustomField(index)}
+                        className="remove-btn-pro"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* IMAGES */}
+          <div className="section-card-pro">
+            <div 
+              className="section-header-pro"
+              onClick={() => toggleSection('images')}
+            >
+              <div className="section-title-wrapper-pro">
+                <h2 className="section-title-pro">📸 Images</h2>
+                <button
+                  type="button"
+                  className="info-btn-pro"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    alert(sectionInfo.images);
+                  }}
+                >
+                  <Info size={16} />
+                </button>
+              </div>
+              {expandedSections.images ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+            </div>
+            
+            {expandedSections.images && (
+              <div className="section-content-pro">
+                <div className="upload-area-pro">
+                  <input
+                    type="file"
+                    id="images"
+                    onChange={handleImageChange}
+                    ref={fileInputRef}
+                    multiple
+                    accept="image/jpeg, image/png, image/webp"
+                    className="upload-input-pro"
+                    disabled={!accession}
+                  />
+                  <label htmlFor="images" className={`upload-label-pro ${!accession ? 'disabled' : ''}`}>
+                    <ImageIcon size={32} />
+                    <span className="upload-text-pro">
+                      {accession ? 'Click to upload images or drag and drop' : 'Enter Accession first to enable upload'}
+                    </span>
+                    <span className="upload-hint-pro">PNG, JPG, WEBP up to 10MB (Max 10 files)</span>
+                  </label>
+                </div>
+
+                {imagePreviews.length > 0 && (
+                  <div className="images-grid-pro">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="image-card-pro">
+                        <img src={preview} alt={`Preview ${index + 1}`} className="preview-img-pro" />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="remove-img-btn-pro"
+                        >
+                          <X size={16} />
+                        </button>
+                        <span className="image-name-pro">{images[index]?.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* SUBMIT BUTTON */}
+          <div className="submit-section-pro">
             <button
               type="submit"
-              className="btn-primary save-btn"
+              className="submit-btn-pro"
               disabled={loading}
             >
-              {loading ? 'Saving...' : (
+              {loading ? (
                 <>
-                  <Save size={18} /> Save New Apple
+                  <div className="spinner-pro"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={20} />
+                  Save Apple Variety
                 </>
               )}
             </button>
