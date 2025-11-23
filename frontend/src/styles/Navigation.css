@@ -80,3 +80,18 @@
 .nav-actions {
   margin-left: auto;
 }
+
+/* Dark Mode Styles */
+body.dark-mode .navigation {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+body.dark-mode .settings-btn {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-light);
+}
+
+body.dark-mode .settings-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}

@@ -8,27 +8,202 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
   const [apple, setApple] = useState(appleData || {});
   const [images, setImages] = useState([]);
   const [isEditing, setIsEditing] = useState(initialIsEditing);
+  const [imageErrors, setImageErrors] = useState({}); // Track which images failed
+  
+  // Helper function to normalize image URLs for duplicate detection (shared across component)
+  const normalizeImageUrl = (url) => {
+    try {
+      // Remove API_BASE and any protocol/domain
+      let normalized = url.replace(API_BASE, '').replace(/^https?:\/\/[^\/]+/, '');
+      
+      // Decode URL encoding multiple times to handle double encoding
+      try {
+        normalized = decodeURIComponent(normalized);
+        // Try decoding again in case of double encoding
+        if (normalized.includes('%')) {
+          normalized = decodeURIComponent(normalized);
+        }
+      } catch (e) {
+        // If decoding fails, continue with encoded version
+      }
+      
+      // Normalize path separators
+      normalized = normalized.replace(/\\/g, '/').replace(/\/+/g, '/');
+      
+      // Extract just the filename for comparison (case-insensitive)
+      const filename = normalized.split('/').pop() || '';
+      
+      // Remove any query parameters or fragments
+      const cleanFilename = filename.split('?')[0].split('#')[0];
+      
+      // Return normalized filename (case-insensitive, trimmed)
+      return cleanFilename.toLowerCase().trim();
+    } catch (e) {
+      // Fallback: try to extract filename from URL string
+      const match = url.match(/\/([^\/\?]+\.(jpg|jpeg|png|gif|bmp|webp))$/i);
+      if (match) {
+        return match[1].toLowerCase().trim();
+      }
+      return url.toLowerCase();
+    }
+  };
+  
+  // Deduplicate images array using normalized filenames
+  const deduplicateImages = (imageArray) => {
+    const seen = new Set();
+    const unique = [];
+    
+    imageArray.forEach(img => {
+      const normalized = normalizeImageUrl(img);
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        unique.push(img);
+      }
+    });
+    
+    return unique;
+  };
   const [activeTab, setActiveTab] = useState('all');
 
   // Initialize images from appleData
   useEffect(() => {
     if (appleData) {
       setApple(appleData);
+      setImageErrors({}); // Reset image errors when appleData changes
       
-      // Get images from the apple data
-      if (appleData.images && Array.isArray(appleData.images)) {
-        const formattedImages = appleData.images.map(img => {
+      
+      // Get images from the apple data - check multiple field name formats
+      let formattedImages = [];
+      const imagesArray = appleData.images || appleData.Images || appleData.IMAGE || appleData['images'] || [];
+      
+      if (Array.isArray(imagesArray) && imagesArray.length > 0) {
+        const imageMap = new Map(); // Use Map to track unique images by normalized filename
+        imagesArray.forEach(img => {
+          const imgPath = String(img).trim();
+          let fullUrl = '';
           // If it's a path, prepend API_BASE
-          if (img.startsWith('/images/') || img.startsWith('/data/')) {
-            return `${API_BASE}${img}`;
+          if (imgPath.startsWith('/images/') || imgPath.startsWith('/data/')) {
+            fullUrl = `${API_BASE}${imgPath}`;
+          } else if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
+            fullUrl = imgPath;
+          } else if (imgPath.startsWith('images/') || imgPath.startsWith('data/')) {
+            fullUrl = `${API_BASE}/${imgPath}`;
+          } else {
+            fullUrl = `${API_BASE}/images/${imgPath}`;
           }
-          // Otherwise assume it's a full URL
-          return img;
+          
+          // Check for duplicates using normalized filename
+          const normalized = normalizeImageUrl(fullUrl);
+          if (!imageMap.has(normalized)) {
+            imageMap.set(normalized, fullUrl);
+          }
         });
-        setImages(formattedImages);
-      } else {
-        setImages([]); // Empty array if no images
+        formattedImages = Array.from(imageMap.values());
       }
+      
+      // Always try to find additional images by accession, even if we have some from database
+      const fetchAdditionalImages = async () => {
+        try {
+          // Try multiple field name formats for accession
+          const accession = appleData.accession || appleData.ACCESSION || appleData['Accession'] || appleData['ACCESSION'] || '';
+          if (accession) {
+            const response = await fetch(`${API_BASE}/api/apples/find-image/${encodeURIComponent(accession)}`);
+            const data = await response.json();
+            if (data.success && data.images && data.images.length > 0) {
+              // Get all images from API - construct full URLs
+              // The backend returns paths like "/images/King MAL0101.JPG"
+              // We need to construct the full URL, encoding spaces properly
+              const apiImages = data.images.map(img => {
+                // Manually encode the filename part to ensure consistent encoding
+                const pathParts = img.split('/');
+                if (pathParts.length > 0) {
+                  const filename = pathParts[pathParts.length - 1];
+                  // Encode the filename but keep the path structure
+                  const encodedFilename = encodeURIComponent(filename);
+                  pathParts[pathParts.length - 1] = encodedFilename;
+                  return `${API_BASE}${pathParts.join('/')}`;
+                }
+                return `${API_BASE}${img}`;
+              });
+              
+              // Combine with database images, avoiding duplicates using normalized filenames
+              const imageMap = new Map();
+              
+              // Add database images first
+              formattedImages.forEach(img => {
+                const normalized = normalizeImageUrl(img);
+                if (!imageMap.has(normalized)) {
+                  imageMap.set(normalized, img);
+                }
+              });
+              
+              // Add API images, avoiding duplicates
+              apiImages.forEach(apiImg => {
+                const normalized = normalizeImageUrl(apiImg);
+                if (!imageMap.has(normalized)) {
+                  imageMap.set(normalized, apiImg);
+                }
+              });
+              
+              // Final deduplication: convert to array and remove any remaining duplicates
+              const uniqueImages = Array.from(imageMap.values());
+              const finalDeduplicated = deduplicateImages(uniqueImages);
+              
+              setImages(finalDeduplicated);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching image:', error);
+        }
+        
+        // If API call fails or returns no results, use database images or try fallback patterns
+        if (formattedImages.length > 0) {
+          // Final deduplication check for database images
+          const finalDeduplicated = deduplicateImages(formattedImages);
+          setImages(finalDeduplicated);
+        } else {
+          // Try fallback patterns
+          const accession = appleData.accession || appleData.ACCESSION || appleData['Accession'] || appleData['ACCESSION'] || '';
+          const title = appleData.cultivar_name || appleData['CULTIVAR NAME'] || appleData.name || '';
+          if (accession) {
+            const accUpper = accession.toUpperCase();
+            const cleanTitle = title ? title.replace(/[^a-zA-Z0-9\s]/g, '').trim() : '';
+            const fallbackUrls = [];
+            
+            // Try patterns with title + accession
+            if (cleanTitle) {
+              const titleWords = cleanTitle.split(/\s+/).filter(w => w.length > 2);
+              if (titleWords.length > 0) {
+                fallbackUrls.push(`${API_BASE}/images/${titleWords[0]} ${accUpper}.jpg`);
+                fallbackUrls.push(`${API_BASE}/images/${titleWords[0]} ${accUpper}.JPG`);
+              }
+            }
+            
+            // Try patterns with numbers + accession
+            const accNumber = accUpper.match(/MAL(\d+)/);
+            if (accNumber) {
+              fallbackUrls.push(`${API_BASE}/images/${accNumber[1]} ${accUpper}.jpg`);
+              fallbackUrls.push(`${API_BASE}/images/${accNumber[1]} ${accUpper}.JPG`);
+            }
+            
+            // Try patterns with just accession
+            fallbackUrls.push(`${API_BASE}/images/${accUpper}.jpg`);
+            fallbackUrls.push(`${API_BASE}/images/${accUpper}.JPG`);
+            
+            // Try all fallback URLs - we'll let the image error handling try each one
+            if (fallbackUrls.length > 0) {
+              setImages(fallbackUrls);
+            } else {
+              setImages([]);
+            }
+          } else {
+            setImages([]);
+          }
+        }
+      };
+      
+      fetchAdditionalImages();
     }
   }, [appleData]);
 
@@ -70,6 +245,13 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF();
     
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const leftWidth = pageWidth * 0.45;
+    const rightWidth = pageWidth * 0.45;
+    const rightStart = pageWidth * 0.52;
+    
     let yPosition = 20;
     const lineHeight = 7;
     const pageHeight = doc.internal.pageSize.height;
@@ -78,13 +260,20 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     // Title
     doc.setFontSize(20);
     doc.setTextColor(231, 111, 81);
-    doc.text(`Apple Variety: ${apple.cultivar_name || apple.name}`, 20, yPosition);
-    yPosition += 15;
+    doc.text(`Apple Variety: ${apple.cultivar_name || apple.name}`, margin, yPosition);
+    yPosition += 10;
+    
+    // Accession
+    doc.setFontSize(12);
+    doc.setTextColor(52, 73, 94);
+    const accession = apple.accession || apple.ACCESSION || '';
+    doc.text(`Accession: ${accession}`, margin, yPosition);
+    yPosition += 8;
     
     // Add a line
     doc.setDrawColor(231, 111, 81);
     doc.setLineWidth(0.5);
-    doc.line(20, yPosition, 190, yPosition);
+    doc.line(margin, yPosition, leftWidth + margin, yPosition);
     yPosition += 10;
     
     // Helper function to add section
@@ -104,7 +293,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
       
       doc.setFontSize(14);
       doc.setTextColor(44, 62, 80);
-      doc.text(title, 20, yPosition);
+      doc.text(title, margin, yPosition);
       yPosition += lineHeight;
       
       doc.setFontSize(10);
@@ -116,6 +305,11 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
           yPosition = 20;
         }
         const formattedKey = key.replace(/_/g, ' ').toUpperCase();
+        const text = `${formattedKey}: ${value || 'N/A'}`;
+        const lines = doc.splitTextToSize(text, leftWidth);
+        lines.forEach(line => {
+          doc.text(line, margin + 5, yPosition);
+        yPosition += lineHeight;
         const text = `${formattedKey}: ${value}`;
         
         // Handle long text with wrapping
@@ -133,6 +327,34 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
       yPosition += 5;
     };
     
+    // Add sections
+    addSection('IDENTITY & INVENTORY', {
+      'Accession Number': apple.acno || apple.ACNO || '',
+      'Accession': accession,
+      'Cultivar Name': apple.cultivar_name || apple.name || ''
+    });
+    
+    addSection('GEOGRAPHY & ORIGIN', {
+      'Country': apple['e origin country'] || apple['E Origin Country'] || '',
+      'Province/State': apple['e origin province'] || apple['E Origin Province'] || '',
+      'City': apple['e origin city'] || apple['E Origin City'] || ''
+    });
+
+    addSection('BIOLOGY & TAXONOMY', {
+      'Genus': apple['e genus'] || apple['E Genus'] || '',
+      'Species': apple['e species'] || apple['E Species'] || '',
+      'Pedigree': apple['e pedigree'] || apple['E pedigree'] || ''
+    });
+    
+    addSection('ADDITIONAL INFORMATION', {
+      'Description': apple.description || '',
+      'Taste': apple.taste || '',
+      'Texture': apple.texture || '',
+      'Uses': apple.uses || '',
+      'Harvest Season': apple.harvestSeason || '',
+      'Hardiness': apple.hardiness || '',
+      'Storage': apple.storage || ''
+    });
     // Add all sections
     Object.values(categoryData).forEach(category => {
       const data = {};
@@ -213,8 +435,93 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
       }
     }
     
+    // Add images section
+    let imageY = 30;
+    const imageSize = 45;
+    const imageSpacing = 8;
+    const imageWidth = rightWidth * (2 / 3);
+    const imageX = rightStart + rightWidth - imageWidth;
+    
+    if (images.length === 0) {
+      doc.setFontSize(12);
+      doc.setTextColor(150, 150, 150);
+      const noImagesText = 'No images';
+      const textWidth = doc.getTextWidth(noImagesText);
+      const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
+      doc.text(noImagesText, centerX, imageY);
+    } else {
+      let imagesLoaded = 0;
+      for (let i = 0; i < Math.min(images.length, 4); i++) {
+        const imageUrl = images[i];
+        
+        try {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          
+          const imageLoaded = await new Promise((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(false);
+            img.src = imageUrl;
+            setTimeout(() => resolve(false), 5000);
+          });
+          
+          if (imageLoaded && img.complete && img.naturalWidth > 0) {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            let format = 'JPEG';
+            if (imageUrl.toLowerCase().endsWith('.png')) {
+              const pngDataUrl = canvas.toDataURL('image/png');
+              format = 'PNG';
+              doc.addImage(pngDataUrl, format, imageX, imageY, imageWidth, imageSize);
+            } else {
+              doc.addImage(dataUrl, format, imageX, imageY, imageWidth, imageSize);
+            }
+            
+            imagesLoaded++;
+            imageY += imageSize + imageSpacing;
+            
+            if (i < images.length - 1 && imageY + imageSize > pageHeight - margin) {
+              doc.addPage();
+              imageY = margin;
+            }
+          } else {
+            doc.setFontSize(10);
+            doc.setTextColor(150, 150, 150);
+            const unavailableText = 'Image unavailable';
+            const textWidth = doc.getTextWidth(unavailableText);
+            const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
+            doc.text(unavailableText, centerX, imageY);
+            imageY += 15;
+          }
+        } catch (error) {
+          console.error(`Failed to load image ${imageUrl}:`, error);
+          doc.setFontSize(10);
+          doc.setTextColor(150, 150, 150);
+          const unavailableText = 'Image unavailable';
+          const textWidth = doc.getTextWidth(unavailableText);
+          const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
+          doc.text(unavailableText, centerX, imageY);
+          imageY += 15;
+        }
+      }
+      
+      if (imagesLoaded === 0) {
+        doc.setFontSize(12);
+        doc.setTextColor(150, 150, 150);
+        const noImagesText = 'No images';
+        const textWidth = doc.getTextWidth(noImagesText);
+        const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
+        doc.text(noImagesText, centerX, 30);
+      }
+    }
+    
     // Save the PDF
-    doc.save(`${apple.cultivar_name || apple.name}_Details_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`${apple.cultivar_name || apple.name}_${accession || 'unknown'}.pdf`);
   };
 
   // Define categories matching Template Creator
@@ -451,19 +758,51 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
             )}
 
             <div className="images-grid">
-              {images.map((img, idx) => (
-                <div key={idx} className="image-card">
-                  <img src={img} alt={`Apple ${idx + 1}`} />
-                  {isEditing && (
-                    <button 
-                      className="remove-img-btn"
-                      onClick={() => removeImage(idx)}
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
+              {(() => {
+                // Deduplicate images right before rendering as final safety check
+                const renderedImages = deduplicateImages(images);
+                return renderedImages.map((img, idx) => {
+                  // Use the image URL directly - it's already properly formatted
+                  const errorCount = imageErrors[idx] || 0;
+                
+                  return (
+                    <div key={`img-${idx}-${img}`} className="image-card">
+                      <img 
+                        key={`${idx}-${errorCount}-${img}`}
+                        src={img}
+                        alt={`Apple ${idx + 1}`}
+                        onError={(e) => {
+                          // If image fails to load, hide it after trying once
+                          if (errorCount === 0) {
+                            setImageErrors(prev => ({ ...prev, [idx]: 1 }));
+                          } else {
+                            // Hide image if it fails after retry
+                            e.target.style.display = 'none';
+                          }
+                        }}
+                        onLoad={() => {
+                          // Clear error count on successful load
+                          if (imageErrors[idx]) {
+                            setImageErrors(prev => {
+                              const newErrors = { ...prev };
+                              delete newErrors[idx];
+                              return newErrors;
+                            });
+                          }
+                        }}
+                      />
+                      {isEditing && (
+                        <button 
+                          className="remove-img-btn"
+                          onClick={() => removeImage(idx)}
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             {images.length === 0 && (

@@ -886,3 +886,313 @@ input:checked + .toggle-slider:before {
     padding: 20px;
   }
 }
+
+/* Dark Mode Styles */
+body.dark-mode .admin-dashboard {
+  background: var(--background);
+}
+
+body.dark-mode .admin-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .admin-header h1 {
+  color: var(--text);
+}
+
+body.dark-mode .admin-subtitle,
+body.dark-mode .data-summary {
+  color: var(--text-light);
+}
+
+body.dark-mode .last-refresh {
+  color: var(--muted);
+}
+
+body.dark-mode .stats-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .stats-card h3 {
+  color: var(--text);
+}
+
+body.dark-mode .stats-card .number {
+  color: var(--text);
+}
+
+body.dark-mode .stats-card .label {
+  color: var(--text-light);
+}
+
+body.dark-mode .search-bar {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .search-bar input {
+  background: var(--background);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+body.dark-mode .search-bar input::placeholder {
+  color: var(--muted);
+}
+
+body.dark-mode .tabs-container {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .tab-button {
+  color: var(--text-light);
+}
+
+body.dark-mode .tab-button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+body.dark-mode .tab-content {
+  background: var(--surface);
+}
+
+body.dark-mode .request-card,
+body.dark-mode .admin-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .request-card h3,
+body.dark-mode .admin-card h3 {
+  color: var(--text);
+}
+
+body.dark-mode .request-card p,
+body.dark-mode .admin-card p {
+  color: var(--text-light);
+}
+
+body.dark-mode .approve-btn,
+body.dark-mode .reject-btn,
+body.dark-mode .view-activity-btn,
+body.dark-mode .delete-admin-btn {
+  color: white;
+}
+
+body.dark-mode .empty-state {
+  color: var(--text-light);
+}
+
+body.dark-mode .modal-overlay {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+body.dark-mode .modal-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .modal-header h2 {
+  color: var(--text);
+}
+
+body.dark-mode .modal-close {
+  color: var(--text-light);
+}
+
+body.dark-mode .activity-log {
+  background: var(--background);
+}
+
+body.dark-mode .activity-item {
+  border-color: var(--border);
+}
+
+body.dark-mode .activity-item .activity-action {
+  color: var(--text);
+}
+
+body.dark-mode .activity-item .activity-details {
+  color: var(--text-light);
+}
+
+body.dark-mode .activity-item .activity-time {
+  color: var(--muted);
+}
+
+body.dark-mode .admin-tabs {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .admin-tab {
+  background: var(--background);
+  color: var(--text-light);
+}
+
+body.dark-mode .admin-tab:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+body.dark-mode .admin-tab.active {
+  background: linear-gradient(135deg, var(--primary), #d4a373);
+  color: white;
+}
+
+body.dark-mode .admin-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .admin-content h2 {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+}
+
+body.dark-mode .admin-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .admin-card-header h3 {
+  color: var(--text);
+}
+
+body.dark-mode .admin-details p {
+  color: var(--text-light);
+}
+
+body.dark-mode .request-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .request-header h3 {
+  color: var(--text);
+}
+
+body.dark-mode .request-email,
+body.dark-mode .request-dob,
+body.dark-mode .request-reason {
+  color: var(--text-light);
+}
+
+body.dark-mode .request-date {
+  color: var(--muted);
+}
+
+body.dark-mode .empty-state-inline {
+  color: var(--text-light);
+}
+
+body.dark-mode .apples-table {
+  background: var(--surface);
+}
+
+body.dark-mode .apples-table td {
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+
+body.dark-mode .apples-table tbody tr:hover {
+  background: var(--background);
+}
+
+body.dark-mode .action-btn {
+  background: var(--surface);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+body.dark-mode .action-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+body.dark-mode .modal-header {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+body.dark-mode .modal-subtitle {
+  color: var(--text-light);
+}
+
+body.dark-mode .activity-log h3 {
+  color: var(--text);
+}
+
+body.dark-mode .activity-timeline::before {
+  background: var(--border);
+}
+
+body.dark-mode .activity-content {
+  background: var(--background);
+  border-left-color: var(--primary);
+}
+
+body.dark-mode .loading-state,
+body.dark-mode .loading-inline {
+  color: var(--text-light);
+}
+
+body.dark-mode .spinner {
+  border-color: var(--border);
+  border-top-color: var(--primary);
+}
+
+body.dark-mode .clear-search {
+  color: var(--text-light);
+}
+
+body.dark-mode .clear-search:hover {
+  color: var(--primary);
+}
+
+body.dark-mode .error-banner button {
+  background: var(--surface);
+  color: #ef4444;
+}
+
+body.dark-mode .error-banner button:hover {
+  background: var(--background);
+}
+
+body.dark-mode .admin-tab.active .badge {
+  background: white;
+  color: var(--primary);
+}
+
+body.dark-mode .admin-tab.active .badge-secondary {
+  background: white;
+  color: var(--primary);
+}
+
+body.dark-mode .toggle-slider:before {
+  background-color: white;
+}
+
+body.dark-mode .status-label.active {
+  background: #4caf50;
+  color: white;
+}
+
+body.dark-mode .status-label.inactive {
+  background: var(--muted);
+  color: white;
+}
+
+body.dark-mode .role-badge.super-admin,
+body.dark-mode .role-badge.admin {
+  color: white;
+}
+
+body.dark-mode .status-badge.active {
+  background: #4caf50;
+  color: white;
+}

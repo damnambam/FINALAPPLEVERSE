@@ -95,6 +95,71 @@ function App() {
   const [hasSearched, setHasSearched] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // ✅ Initialize dark mode on app load
+  useEffect(() => {
+    // Check if user is logged in
+    const isLoggedIn = localStorage.getItem('token') || localStorage.getItem('adminToken');
+    
+    if (isLoggedIn) {
+      // User is logged in - restore their preferences
+      const adminData = localStorage.getItem('adminData');
+      const userData = localStorage.getItem('userData');
+      const currentUser = adminData ? JSON.parse(adminData) : userData ? JSON.parse(userData) : null;
+      
+      if (currentUser && currentUser.email) {
+        // Try to get user-specific preferences first
+        const darkMode = localStorage.getItem(`darkMode_${currentUser.email}`) === 'true' || localStorage.getItem('darkMode') === 'true';
+        const savedFontSize = localStorage.getItem(`fontSize_${currentUser.email}`) || localStorage.getItem('fontSize');
+        const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+        const highContrast = localStorage.getItem(`highContrast_${currentUser.email}`) === 'true' || localStorage.getItem('highContrast') === 'true';
+        
+        // Sync to main localStorage keys
+        localStorage.setItem('darkMode', darkMode);
+        localStorage.setItem('fontSize', fontSize);
+        localStorage.setItem('highContrast', highContrast);
+        
+        if (darkMode) {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+        document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+        document.body.classList.remove('large-text'); // Remove old class
+        if (highContrast) {
+          document.body.classList.add('high-contrast');
+        } else {
+          document.body.classList.remove('high-contrast');
+        }
+      } else {
+        // Fallback to general preferences
+        const darkMode = localStorage.getItem('darkMode') === 'true';
+        const savedFontSize = localStorage.getItem('fontSize');
+        const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+        const highContrast = localStorage.getItem('highContrast') === 'true';
+        
+        if (darkMode) {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+        document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+        document.body.classList.remove('large-text'); // Remove old class
+        if (highContrast) {
+          document.body.classList.add('high-contrast');
+        } else {
+          document.body.classList.remove('high-contrast');
+        }
+      }
+    } else {
+      // User is not logged in - ensure light mode (normal mode)
+      document.body.classList.remove('dark-mode', 'large-text', 'high-contrast');
+      document.documentElement.style.setProperty('--user-font-size', '16px');
+      localStorage.removeItem('darkMode');
+      localStorage.removeItem('fontSize');
+      localStorage.removeItem('highContrast');
+    }
+  }, []);
+
   // ✅ Check admin status on mount
   useEffect(() => {
     const adminStatus = localStorage.getItem('isAdmin') === 'true';

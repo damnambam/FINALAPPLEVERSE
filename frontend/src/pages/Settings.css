@@ -408,32 +408,100 @@ body.dark-mode .settings-header h1 {
   color: #e0e0e0;
 }
 
-/* Large Text Styles */
-body.large-text {
-  font-size: 18px;
+/* Font Size Styles - Using CSS variable */
+:root {
+  --user-font-size: 16px;
 }
 
-body.large-text .settings-header h1 {
-  font-size: 42px;
+body {
+  font-size: var(--user-font-size, 16px);
 }
 
-body.large-text .tab-panel h2 {
-  font-size: 32px;
+.settings-header h1 {
+  font-size: calc(var(--user-font-size, 16px) * 2.25);
 }
 
-body.large-text .option-info h3 {
-  font-size: 20px;
+.tab-panel h2 {
+  font-size: calc(var(--user-font-size, 16px) * 2);
 }
 
-body.large-text .form-group input,
-body.large-text .save-btn,
-body.large-text .settings-tab {
-  font-size: 18px;
+.option-info h3 {
+  font-size: calc(var(--user-font-size, 16px) * 1.25);
 }
 
-body.large-text .option-info p,
-body.large-text .tab-description {
-  font-size: 16px;
+.form-group input,
+.save-btn,
+.settings-tab {
+  font-size: var(--user-font-size, 16px);
+}
+
+.option-info p,
+.tab-description {
+  font-size: calc(var(--user-font-size, 16px) * 0.875);
+}
+
+/* Font Size Slider Styles */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  margin: 0;
+  padding: 0;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary, #e74c3c);
+  cursor: pointer;
+  border: 2px solid var(--surface, #ffffff);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  margin-top: -6px;
+  position: relative;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary, #e74c3c);
+  cursor: pointer;
+  border: 2px solid var(--surface, #ffffff);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  position: relative;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: var(--border, #e0e0e0);
+  border-radius: 3px;
+  width: 100%;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 6px;
+  background: var(--border, #e0e0e0);
+  border-radius: 3px;
+  width: 100%;
+}
+
+body.dark-mode input[type="range"]::-webkit-slider-runnable-track {
+  background: var(--border, #3a3a3a);
+}
+
+body.dark-mode input[type="range"]::-moz-range-track {
+  background: var(--border, #3a3a3a);
+}
+
+body.dark-mode input[type="range"]::-webkit-slider-thumb {
+  border-color: var(--surface, #2c2c2c);
+}
+
+body.dark-mode input[type="range"]::-moz-range-thumb {
+  border-color: var(--surface, #2c2c2c);
 }
 
 /* High Contrast Styles */

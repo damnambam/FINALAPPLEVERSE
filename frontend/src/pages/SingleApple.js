@@ -251,6 +251,13 @@ export default function SingleApple() {
     });
 
     try {
+      // Get admin token from localStorage
+      const adminToken = localStorage.getItem('adminToken');
+      
+      if (!adminToken) {
+        setError('You must be logged in as admin to create apples.');
+        setLoading(false);
+        navigate('/signup-login');
       const adminToken = localStorage.getItem('adminToken');
       if (!adminToken) {
         setError('❌ You must be logged in as admin to upload apples.');

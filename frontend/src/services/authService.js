@@ -17,11 +17,12 @@ export const signup = async (email, password, name) => {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || "Signup failed");
+      throw new Error(data.message || data.error || "Signup failed");
     }
 
     return data;
   } catch (error) {
+    console.error('Signup error:', error);
     throw error;
   }
 };
@@ -51,6 +52,32 @@ export const login = async (email, password) => {
       localStorage.setItem("userData", JSON.stringify(data.user));
       localStorage.setItem("token", data.token);
       localStorage.setItem("isAdmin", "false");
+      
+      // Restore user's dark mode preference
+      if (data.user.email) {
+        const savedDarkMode = localStorage.getItem(`darkMode_${data.user.email}`) === 'true';
+        const savedFontSize = localStorage.getItem(`fontSize_${data.user.email}`) || localStorage.getItem('fontSize');
+        const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+        const savedHighContrast = localStorage.getItem(`highContrast_${data.user.email}`) === 'true';
+        
+        localStorage.setItem('darkMode', savedDarkMode);
+        localStorage.setItem('fontSize', fontSize);
+        localStorage.setItem('highContrast', savedHighContrast);
+        
+        // Apply settings immediately
+        if (savedDarkMode) {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+        document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+        document.body.classList.remove('large-text');
+        if (savedHighContrast) {
+          document.body.classList.add('high-contrast');
+        } else {
+          document.body.classList.remove('high-contrast');
+        }
+      }
       
       // Dispatch custom event to update Navigation
       window.dispatchEvent(new Event('authChange'));
@@ -92,6 +119,32 @@ export const adminLogin = async (email, password) => {
         localStorage.setItem("admin", JSON.stringify(data.admin));
         localStorage.setItem("adminData", JSON.stringify(data.admin));
         localStorage.setItem("userData", JSON.stringify(data.admin));
+        
+        // Restore admin's dark mode preference
+        if (data.admin.email) {
+          const savedDarkMode = localStorage.getItem(`darkMode_${data.admin.email}`) === 'true';
+          const savedFontSize = localStorage.getItem(`fontSize_${data.admin.email}`) || localStorage.getItem('fontSize');
+          const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+          const savedHighContrast = localStorage.getItem(`highContrast_${data.admin.email}`) === 'true';
+          
+          localStorage.setItem('darkMode', savedDarkMode);
+          localStorage.setItem('fontSize', fontSize);
+          localStorage.setItem('highContrast', savedHighContrast);
+          
+          // Apply settings immediately
+          if (savedDarkMode) {
+            document.body.classList.add('dark-mode');
+          } else {
+            document.body.classList.remove('dark-mode');
+          }
+          document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+          document.body.classList.remove('large-text');
+          if (savedHighContrast) {
+            document.body.classList.add('high-contrast');
+          } else {
+            document.body.classList.remove('high-contrast');
+          }
+        }
       }
       
       console.log('✅ Admin token stored:', data.token);
@@ -110,6 +163,22 @@ export const adminLogin = async (email, password) => {
 // LOGOUT
 // ========================
 export const logout = () => {
+  // Get current user to save their dark mode preference before logout
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.email) {
+    // Save user's current dark mode preference
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    const savedFontSize = localStorage.getItem('fontSize');
+    const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+    const highContrast = localStorage.getItem('highContrast') === 'true';
+    
+    // Store preferences with user email as key
+    localStorage.setItem(`darkMode_${currentUser.email}`, darkMode);
+    localStorage.setItem(`fontSize_${currentUser.email}`, fontSize);
+    localStorage.setItem(`highContrast_${currentUser.email}`, highContrast);
+  }
+  
+  // Clear authentication data
   localStorage.removeItem("user");
   localStorage.removeItem("token");
   localStorage.removeItem("adminToken");
@@ -117,6 +186,13 @@ export const logout = () => {
   localStorage.removeItem("admin");
   localStorage.removeItem("adminData");
   localStorage.removeItem("userData");
+  
+  // Reset to light mode (normal mode) after logout
+  localStorage.removeItem('darkMode');
+  localStorage.removeItem('fontSize');
+  localStorage.removeItem('highContrast');
+  document.body.classList.remove('dark-mode', 'large-text', 'high-contrast');
+  document.documentElement.style.setProperty('--user-font-size', '16px');
   
   // Dispatch custom event to update Navigation
   window.dispatchEvent(new Event('authChange'));
