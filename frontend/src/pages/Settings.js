@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, User, Lock, Eye, Accessibility, Save, Moon, Sun, Type, Contrast } from 'lucide-react';
 import { updateUserProfile, changePassword } from '../services/authService';
@@ -9,6 +9,7 @@ const Settings = () => {
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const fontSizeTimeoutRef = useRef(null);
 
   // User details state
   const [userDetails, setUserDetails] = useState({
@@ -33,7 +34,7 @@ const Settings = () => {
   // Accessibility settings state
   const [accessibilitySettings, setAccessibilitySettings] = useState({
     darkMode: false,
-    largeText: false,
+    fontSize: 16, // Default font size in pixels
     highContrast: false
   });
 
@@ -65,9 +66,10 @@ const Settings = () => {
 
   // Load accessibility settings
   const loadAccessibilitySettings = () => {
+    const savedFontSize = localStorage.getItem('fontSize');
     const settings = {
       darkMode: localStorage.getItem('darkMode') === 'true',
-      largeText: localStorage.getItem('largeText') === 'true',
+      fontSize: savedFontSize ? parseInt(savedFontSize, 10) : 16,
       highContrast: localStorage.getItem('highContrast') === 'true'
     };
     setAccessibilitySettings(settings);
@@ -83,12 +85,10 @@ const Settings = () => {
       document.body.classList.remove('dark-mode');
     }
 
-    // Large text
-    if (settings.largeText) {
-      document.body.classList.add('large-text');
-    } else {
+    // Font size - apply as CSS variable
+    document.documentElement.style.setProperty('--user-font-size', `${settings.fontSize}px`);
+    // Also remove old large-text class for backward compatibility
       document.body.classList.remove('large-text');
-    }
 
     // High contrast
     if (settings.highContrast) {
@@ -123,10 +123,57 @@ const Settings = () => {
     
     setAccessibilitySettings(newSettings);
     localStorage.setItem(setting, newSettings[setting]);
+    
+    // Also save with user email for persistence across sessions
+    const adminData = localStorage.getItem('adminData');
+    const userData = localStorage.getItem('userData');
+    const currentUser = adminData ? JSON.parse(adminData) : userData ? JSON.parse(userData) : null;
+    
+    if (currentUser && currentUser.email) {
+      localStorage.setItem(`${setting}_${currentUser.email}`, newSettings[setting]);
+    }
+    
     applyAccessibilitySettings(newSettings);
     
     setMessage({ type: 'success', text: 'Accessibility setting updated!' });
     setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+  };
+
+  // Handle font size change (apply after 1 second delay)
+  const handleFontSizeChange = (e) => {
+    const newFontSize = parseInt(e.target.value, 10);
+    
+    // Update state immediately for slider display (but don't apply yet)
+    const newSettings = {
+      ...accessibilitySettings,
+      fontSize: newFontSize
+    };
+    setAccessibilitySettings(newSettings);
+    
+    // Save to localStorage
+    localStorage.setItem('fontSize', newFontSize);
+    
+    // Also save with user email for persistence across sessions
+    const adminData = localStorage.getItem('adminData');
+    const userData = localStorage.getItem('userData');
+    const currentUser = adminData ? JSON.parse(adminData) : userData ? JSON.parse(userData) : null;
+    
+    if (currentUser && currentUser.email) {
+      localStorage.setItem(`fontSize_${currentUser.email}`, newFontSize);
+    }
+    
+    // Clear any existing timeout
+    if (fontSizeTimeoutRef.current) {
+      clearTimeout(fontSizeTimeoutRef.current);
+    }
+    
+    // Apply font size after 1 second delay
+    fontSizeTimeoutRef.current = setTimeout(() => {
+      applyAccessibilitySettings(newSettings);
+      setMessage({ type: 'success', text: 'Font size updated!' });
+      setTimeout(() => setMessage({ type: '', text: '' }), 2000);
+      fontSizeTimeoutRef.current = null;
+    }, 1000);
   };
 
   // Toggle password visibility
@@ -440,25 +487,36 @@ const Settings = () => {
                   </label>
                 </div>
 
-                {/* Large Text */}
+                {/* Font Size Slider */}
                 <div className="accessibility-option">
                   <div className="option-info">
                     <div className="option-icon">
                       <Type size={24} />
                     </div>
-                    <div>
-                      <h3>Larger Text</h3>
-                      <p>Increase font size for better readability</p>
+                    <div style={{ flex: 1 }}>
+                      <h3>Font Size</h3>
+                      <p>Adjust font size for better readability ({accessibilitySettings.fontSize}px)</p>
                     </div>
                   </div>
-                  <label className="toggle-switch">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '200px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-light, #666)' }}>12px</span>
                     <input
-                      type="checkbox"
-                      checked={accessibilitySettings.largeText}
-                      onChange={() => handleAccessibilityToggle('largeText')}
+                      type="range"
+                      min="12"
+                      max="24"
+                      value={accessibilitySettings.fontSize}
+                      onChange={handleFontSizeChange}
+                      style={{
+                        flex: 1,
+                        height: '6px',
+                        borderRadius: '3px',
+                        background: 'var(--border, #e0e0e0)',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
                     />
-                    <span className="toggle-slider"></span>
-                  </label>
+                    <span style={{ fontSize: '12px', color: 'var(--text-light, #666)' }}>24px</span>
+                  </div>
                 </div>
 
                 {/* High Contrast */}

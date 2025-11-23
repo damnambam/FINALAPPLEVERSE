@@ -100,7 +100,19 @@ export default function SignupLogin() {
             setIsLogin(true);
             setFormData({ email: formData.email, password: "", name: "", dob: "" });
           } else {
-            throw new Error(response.error || "Signup failed");
+            const errorMsg = response.message || response.error || "Signup failed";
+            // If email exists, suggest logging in instead
+            if (errorMsg.toLowerCase().includes('already exists') || errorMsg.toLowerCase().includes('email already')) {
+              const shouldLogin = window.confirm("This email is already registered. Would you like to login instead?");
+              if (shouldLogin) {
+                setIsLogin(true);
+                setFormData({ ...formData, password: "" });
+              } else {
+                throw new Error(errorMsg);
+              }
+            } else {
+              throw new Error(errorMsg);
+            }
           }
         }
       }

@@ -93,6 +93,13 @@ const appleSchema = new mongoose.Schema({
     type: Map,
     of: String,
     default: {}
+  },
+  
+  // Excel row index to preserve original order
+  excelRowIndex: {
+    type: Number,
+    default: 0,
+    index: true
   }
 }, {
   timestamps: true,

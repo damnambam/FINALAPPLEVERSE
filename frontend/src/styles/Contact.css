@@ -533,3 +533,80 @@
 .team-card:nth-child(2) { animation-delay: 0.2s; }
 .team-card:nth-child(3) { animation-delay: 0.3s; }
 .team-card:nth-child(4) { animation-delay: 0.4s; }
+
+/* Dark Mode Styles */
+body.dark-mode .contact-page {
+  background: var(--background);
+}
+
+body.dark-mode .hero-section {
+  background: linear-gradient(135deg, #2c2c2c 0%, #1a1a1a 100%);
+}
+
+body.dark-mode .info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .info-title {
+  color: var(--text);
+}
+
+body.dark-mode .info-detail {
+  color: var(--text);
+}
+
+body.dark-mode .info-subtext {
+  color: var(--text-light);
+}
+
+body.dark-mode .content-section {
+  background: var(--background);
+}
+
+body.dark-mode .section-title {
+  color: var(--text);
+}
+
+body.dark-mode .section-description {
+  color: var(--text-light);
+}
+
+body.dark-mode .form-wrapper {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .form-label {
+  color: var(--text);
+}
+
+body.dark-mode .form-input,
+body.dark-mode .form-textarea {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+body.dark-mode .form-input:focus,
+body.dark-mode .form-textarea:focus {
+  border-color: #667eea;
+  background: var(--surface);
+}
+
+body.dark-mode .team-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .team-name {
+  color: var(--text);
+}
+
+body.dark-mode .team-role {
+  color: var(--text-light);
+}
+
+body.dark-mode .map-section {
+  background: linear-gradient(to bottom, var(--background), var(--bg));
+}

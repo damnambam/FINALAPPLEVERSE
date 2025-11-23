@@ -153,9 +153,20 @@ export default function SingleApple() {
     });
 
     try {
+      // Get admin token from localStorage
+      const adminToken = localStorage.getItem('adminToken');
+      
+      if (!adminToken) {
+        setError('You must be logged in as admin to create apples.');
+        setLoading(false);
+        navigate('/signup-login');
+        return;
+      }
+
       const response = await axios.post('http://localhost:5000/api/apples/single-upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${adminToken}`
         },
       });
 

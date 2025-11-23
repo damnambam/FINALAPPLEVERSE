@@ -12,6 +12,16 @@
   --radius: 20px;
 }
 
+/* Dark Mode CSS Variables */
+body.dark-mode {
+  --background: #1a1a1a;
+  --surface: #2c2c2c;
+  --text: #e0e0e0;
+  --text-light: #b0b0b0;
+  --border: #3a3a3a;
+  --shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -25,6 +35,8 @@ body {
   background-color: var(--background);
   color: var(--text);
   line-height: 1.6;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  font-size: var(--user-font-size, 16px);
 }
 
 .app {
@@ -1383,4 +1395,315 @@ body {
 .clear-search-main-btn:hover {
   background: var(--primary-dark);
   transform: translateY(-2px);
+}
+
+/* Global Dark Mode Styles */
+body.dark-mode {
+  background-color: var(--background);
+  color: var(--text);
+}
+
+body.dark-mode .app {
+  background-color: var(--background);
+}
+
+/* Navigation Dark Mode */
+body.dark-mode .navigation {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+body.dark-mode .nav-tab {
+  color: var(--text-light);
+}
+
+body.dark-mode .nav-tab:hover {
+  background: var(--background);
+  color: var(--text);
+}
+
+body.dark-mode .nav-tab.active {
+  background: var(--primary);
+  color: white;
+}
+
+body.dark-mode .nav-brand,
+body.dark-mode .brand-text {
+  color: var(--primary);
+}
+
+/* Hero Section Dark Mode */
+body.dark-mode .hero-section {
+  background: linear-gradient(135deg, #2c1a1a 0%, #1a2c1a 100%);
+  color: white;
+}
+
+/* Search Container Dark Mode */
+body.dark-mode .search-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .smart-search-input {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+body.dark-mode .smart-search-input:focus {
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+/* Features Grid Dark Mode */
+body.dark-mode .features-section h2 {
+  color: var(--text);
+}
+
+body.dark-mode .feature-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .feature-card h3 {
+  color: var(--text);
+}
+
+body.dark-mode .feature-card p {
+  color: var(--text-light);
+}
+
+/* Filter Pills Dark Mode */
+body.dark-mode .filter-pill {
+  background: var(--surface);
+  color: var(--text-light);
+  border-color: var(--border);
+}
+
+body.dark-mode .filter-pill:hover {
+  background: var(--primary);
+  color: white;
+}
+
+body.dark-mode .filter-pill.active {
+  background: var(--primary);
+  color: white;
+}
+
+/* Footer Dark Mode */
+body.dark-mode .footer {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2c2c2c 100%);
+  color: var(--text);
+}
+
+body.dark-mode .footer-section h3,
+body.dark-mode .footer-section h4 {
+  color: var(--text);
+}
+
+body.dark-mode .footer-links a,
+body.dark-mode .contact-item,
+body.dark-mode .brand-description,
+body.dark-mode .copyright {
+  color: var(--text-light);
+}
+
+body.dark-mode .footer-links a:hover {
+  color: var(--primary);
+}
+
+/* User Menu Dark Mode */
+body.dark-mode .user-btn {
+  border-color: var(--border);
+  color: var(--text-light);
+}
+
+body.dark-mode .user-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+body.dark-mode .user-dropdown {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .dropdown-item {
+  color: var(--text);
+}
+
+body.dark-mode .dropdown-item:hover {
+  background: var(--background);
+  color: var(--primary);
+}
+
+body.dark-mode .dropdown-divider {
+  background: var(--border);
+}
+
+/* Filters Modal Dark Mode */
+body.dark-mode .filters-modal {
+  background: rgba(0,0,0,0.7);
+}
+
+body.dark-mode .filters-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .filters-header h2 {
+  color: var(--text);
+}
+
+body.dark-mode .close-btn {
+  color: var(--text-light);
+}
+
+body.dark-mode .filter-group label {
+  color: var(--text);
+}
+
+body.dark-mode .filter-group select,
+body.dark-mode .filter-group input {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+body.dark-mode .filter-group select:focus,
+body.dark-mode .filter-group input:focus {
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+/* Search Results Dark Mode */
+body.dark-mode .search-results-section {
+  background: var(--background);
+}
+
+body.dark-mode .results-info h2 {
+  color: var(--text);
+}
+
+body.dark-mode .results-info p {
+  color: var(--text-light);
+}
+
+body.dark-mode .view-toggle {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .view-toggle-btn {
+  color: var(--text-light);
+}
+
+body.dark-mode .view-toggle-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
+body.dark-mode .view-toggle-btn:hover:not(.active) {
+  background: var(--background);
+  color: var(--text);
+}
+
+body.dark-mode .no-results {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+body.dark-mode .no-results-content h3 {
+  color: var(--text);
+}
+
+body.dark-mode .no-results-content p {
+  color: var(--text-light);
+}
+
+body.dark-mode .search-suggestions button {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-light);
+}
+
+body.dark-mode .search-suggestions button:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Apple Slider Dark Mode */
+body.dark-mode .apple-featured-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+body.dark-mode .apple-header h2 {
+  color: var(--text);
+}
+
+body.dark-mode .apple-latin {
+  color: var(--text-light);
+}
+
+body.dark-mode .characteristic .label {
+  color: var(--text);
+}
+
+body.dark-mode .characteristic .value {
+  color: var(--text-light);
+}
+
+body.dark-mode .use-tag {
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--text-light);
+}
+
+body.dark-mode .apple-description {
+  color: var(--text-light);
+}
+
+body.dark-mode .apple-stats {
+  background: var(--background);
+}
+
+body.dark-mode .stat-value {
+  color: var(--text);
+}
+
+body.dark-mode .stat-label {
+  color: var(--text-light);
+}
+
+body.dark-mode .slider-arrow {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-light);
+}
+
+body.dark-mode .slider-arrow:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+body.dark-mode .dot {
+  background: var(--border);
+}
+
+body.dark-mode .dot.active {
+  background: var(--primary);
+}
+
+body.dark-mode .slider-counter {
+  color: var(--text-light);
+}
+
+body.dark-mode .section-header h2 {
+  color: var(--text);
+}
+
+body.dark-mode .section-header p {
+  color: var(--text-light);
 }

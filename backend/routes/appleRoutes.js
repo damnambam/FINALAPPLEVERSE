@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import fs from 'fs';
 import { Apple } from '../models/Apple.js';
 import { Admin } from '../models/Admin.js';
 
@@ -12,6 +13,7 @@ const router = express.Router();
 // Fix __dirname for ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const __dirname_routes = __dirname; // Alias for consistency
 
 // ========================
 // MIDDLEWARE - Verify Admin Token
@@ -375,6 +377,154 @@ router.post('/bulk-upload-with-images', verifyAdminToken, upload.any(), async (r
 });
 
 // ========================
+// HELPER - Transform field names to match frontend expectations
+// Handles both schema field names (underscores) and actual DB field names (spaces with various casing)
+// ========================
+const transformAppleFields = (apple) => {
+  if (!apple) return apple;
+  
+  const transformed = { ...apple };
+  
+  // Preserve excelRowIndex for sorting
+  if (apple.excelRowIndex !== undefined) {
+    transformed.excelRowIndex = apple.excelRowIndex;
+  }
+  
+  // Helper to get value from various possible field name formats
+  const getField = (variations) => {
+    for (const field of variations) {
+      if (transformed[field] !== undefined && transformed[field] !== null && transformed[field] !== '') {
+        return transformed[field];
+      }
+    }
+    return '';
+  };
+  
+  // Normalize cultivar_name (handle various formats)
+  const cultivarName = getField([
+    'cultivar_name',
+    'CULTIVAR NAME',
+    'CULTIVAR_NAME',
+    'Cultivar Name',
+    'name'
+  ]);
+  if (cultivarName) {
+    transformed.cultivar_name = cultivarName;
+    transformed['CULTIVAR NAME'] = cultivarName;
+  }
+  
+  // Normalize accession (handle various formats)
+  const accession = getField(['accession', 'ACCESSION']);
+  if (accession) {
+    transformed.accession = accession;
+    transformed['ACCESSION'] = accession;
+  }
+  
+  // Transform origin country (handle various formats)
+  const country = getField([
+    'e_origin_country',
+    'E Origin Country',
+    'E_ORIGIN_COUNTRY',
+    'e origin country'
+  ]);
+  if (country) {
+    transformed['e origin country'] = country;
+  }
+  
+  // Transform origin province
+  const province = getField([
+    'e_origin_province',
+    'E Origin Province',
+    'E_ORIGIN_PROVINCE',
+    'e origin province'
+  ]);
+  if (province) {
+    transformed['e origin province'] = province;
+  }
+  
+  // Transform origin city
+  const city = getField([
+    'e_origin_city',
+    'E Origin City',
+    'E_ORIGIN_CITY',
+    'e origin city'
+  ]);
+  if (city) {
+    transformed['e origin city'] = city;
+  }
+  
+  // Transform pedigree
+  const pedigree = getField([
+    'e_pedigree',
+    'E pedigree',
+    'E Pedigree',
+    'E_PEDIGREE',
+    'e pedigree'
+  ]);
+  if (pedigree) {
+    transformed['e pedigree'] = pedigree;
+  }
+  
+  // Transform genus
+  const genus = getField([
+    'e_genus',
+    'E GENUS',
+    'E_GENUS',
+    'E Genus',
+    'e genus'
+  ]);
+  if (genus) {
+    transformed['e genus'] = genus;
+  }
+  
+  // Transform species
+  const species = getField([
+    'e_species',
+    'E SPECIES',
+    'E_SPECIES',
+    'E Species',
+    'e species'
+  ]);
+  if (species) {
+    transformed['e species'] = species;
+  }
+  
+  // Transform breeder
+  const breeder = getField([
+    'e_breeder',
+    'E Breeder',
+    'E_BREEDER',
+    'e breeder'
+  ]);
+  if (breeder) {
+    transformed['e breeder'] = breeder;
+  }
+  
+  // Transform collector
+  const collector = getField([
+    'e_collector',
+    'E Collector',
+    'E_COLLECTOR',
+    'e collector'
+  ]);
+  if (collector) {
+    transformed['e collector'] = collector;
+  }
+  
+  // Preserve images field (ensure it's always an array)
+  if (transformed.images !== undefined) {
+    transformed.images = Array.isArray(transformed.images) ? transformed.images : [];
+  } else if (transformed.Images !== undefined) {
+    transformed.images = Array.isArray(transformed.Images) ? transformed.Images : [];
+    transformed.Images = transformed.images;
+  } else {
+    transformed.images = [];
+  }
+  
+  return transformed;
+};
+
+// ========================
 // GET ALL APPLES (Root path - for LibraryV2)
 // ========================
 router.get('/', async (req, res) => {
@@ -395,18 +545,33 @@ router.get('/', async (req, res) => {
           { taste: { $regex: searchQuery, $options: 'i' } }
         ]
       })
-        .sort({ createdAt: -1 })
+        .sort({ excelRowIndex: 1, createdAt: 1 })
         .lean();
       console.log(`🔍 Search for "${searchQuery}": found ${apples.length} apples`);
     } else {
-      // Return all apples
+      // Return all apples - sort by excelRowIndex to preserve Excel order, fallback to createdAt
       apples = await Apple.find({})
-        .sort({ createdAt: -1 })
+        .sort({ excelRowIndex: 1, createdAt: 1 })
         .lean();
       console.log(`📊 Fetching all apples: ${apples.length} found`);
+      
+      // Verify sorting - first should be lowest excelRowIndex
+      if (apples.length > 0) {
+        const firstCultivar = apples[0].cultivar_name || apples[0]['CULTIVAR NAME'] || 'Unknown';
+        console.log(`✅ First record after sort: ${firstCultivar} (excelRowIndex: ${apples[0].excelRowIndex})`);
+      }
     }
 
-    res.json(apples);
+    // Transform field names to match frontend expectations
+    const transformedApples = apples.map(transformAppleFields);
+    
+    // Log first record to verify order
+    if (transformedApples.length > 0) {
+      const first = transformedApples[0];
+      console.log(`📋 First record in API response: ${first.cultivar_name || first['CULTIVAR NAME']} (excelRowIndex: ${first.excelRowIndex})`);
+    }
+
+    res.json(transformedApples);
   } catch (error) {
     console.error('❌ Error fetching apples:', error);
     res.status(500).json({ 
@@ -421,14 +586,17 @@ router.get('/', async (req, res) => {
 // ========================
 router.get('/all', async (req, res) => {
   try {
-    const apples = await Apple.find({})
-      .sort({ createdAt: -1 })
+    const       apples = await Apple.find({})
+      .sort({ excelRowIndex: 1, createdAt: 1 })
       .lean();
+
+    // Transform field names to match frontend expectations
+    const transformedApples = apples.map(transformAppleFields);
 
     res.json({ 
       success: true, 
-      count: apples.length,
-      apples 
+      count: transformedApples.length,
+      apples: transformedApples 
     });
   } catch (error) {
     console.error('❌ Error fetching apples:', error);
@@ -444,7 +612,7 @@ router.get('/all', async (req, res) => {
 // ========================
 router.get('/:id', async (req, res) => {
   try {
-    const apple = await Apple.findById(req.params.id);
+    const apple = await Apple.findById(req.params.id).lean();
 
     if (!apple) {
       return res.status(404).json({ 
@@ -453,9 +621,12 @@ router.get('/:id', async (req, res) => {
       });
     }
 
+    // Transform field names to match frontend expectations
+    const transformedApple = transformAppleFields(apple);
+
     res.json({ 
       success: true, 
-      apple 
+      apple: transformedApple 
     });
   } catch (error) {
     console.error('❌ Error fetching apple:', error);
@@ -500,7 +671,7 @@ router.put('/:id', verifyAdminToken, upload.array('images', 10), async (req, res
       req.params.id,
       appleData,
       { new: true, runValidators: true }
-    );
+    ).lean();
 
     // Log activity
     await logActivity(
@@ -511,10 +682,13 @@ router.put('/:id', verifyAdminToken, upload.array('images', 10), async (req, res
 
     console.log('✅ Apple updated:', updatedApple.cultivar_name);
 
+    // Transform field names to match frontend expectations
+    const transformedApple = transformAppleFields(updatedApple);
+
     res.json({ 
       success: true, 
       message: 'Apple updated successfully',
-      apple: updatedApple 
+      apple: transformedApple 
     });
   } catch (error) {
     console.error('❌ Error updating apple:', error);
@@ -575,12 +749,15 @@ router.get('/search/:query', async (req, res) => {
         { color: { $regex: query, $options: 'i' } },
         { taste: { $regex: query, $options: 'i' } }
       ]
-    }).limit(50);
+    }).limit(50).lean();
+
+    // Transform field names to match frontend expectations
+    const transformedApples = apples.map(transformAppleFields);
 
     res.json({ 
       success: true, 
-      count: apples.length,
-      apples 
+      count: transformedApples.length,
+      apples: transformedApples 
     });
   } catch (error) {
     console.error('❌ Error searching apples:', error);
@@ -600,15 +777,29 @@ router.get('/filters/options', async (req, res) => {
     const db = mongoose.connection;
     const applesCollection = db.collection('apples');
     
-    // Get unique values for each filter field using actual field names with spaces
-    const [acnoValues, accessionValues, countryValues, provinceValues, cityValues, pedigreeValues] = await Promise.all([
+    // Get unique values for each filter field - try both schema names and actual DB field names
+    const [acnoValues1, acnoValues2, accessionValues1, accessionValues2, countryValues1, countryValues2, provinceValues1, provinceValues2, cityValues1, cityValues2, pedigreeValues1, pedigreeValues2] = await Promise.all([
       applesCollection.distinct('acno'),
+      applesCollection.distinct('ACNO'),
       applesCollection.distinct('accession'),
-      applesCollection.distinct('e origin country'),
-      applesCollection.distinct('e origin province'),
-      applesCollection.distinct('e origin city'),
-      applesCollection.distinct('e pedigree')
+      applesCollection.distinct('ACCESSION'),
+      applesCollection.distinct('e_origin_country'),
+      applesCollection.distinct('E Origin Country'),
+      applesCollection.distinct('e_origin_province'),
+      applesCollection.distinct('E Origin Province'),
+      applesCollection.distinct('e_origin_city'),
+      applesCollection.distinct('E Origin City'),
+      applesCollection.distinct('e_pedigree'),
+      applesCollection.distinct('E pedigree')
     ]);
+    
+    // Combine results, preferring non-empty arrays
+    const acnoValues = (acnoValues1?.length > 0 ? acnoValues1 : acnoValues2) || [];
+    const accessionValues = (accessionValues1?.length > 0 ? accessionValues1 : accessionValues2) || [];
+    const countryValues = (countryValues1?.length > 0 ? countryValues1 : countryValues2) || [];
+    const provinceValues = (provinceValues1?.length > 0 ? provinceValues1 : provinceValues2) || [];
+    const cityValues = (cityValues1?.length > 0 ? cityValues1 : cityValues2) || [];
+    const pedigreeValues = (pedigreeValues1?.length > 0 ? pedigreeValues1 : pedigreeValues2) || [];
 
     const filters = {
       acno: (acnoValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
@@ -637,6 +828,51 @@ router.get('/filters/options', async (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// ========================
+// FIND IMAGE BY ACCESSION
+// ========================
+router.get('/find-image/:accession', async (req, res) => {
+  try {
+    const accession = req.params.accession.toUpperCase();
+    const imagesDir = path.join(__dirname, '..', 'images');
+    
+    if (!fs.existsSync(imagesDir)) {
+      return res.json({ success: false, images: [] });
+    }
+    
+    const files = fs.readdirSync(imagesDir);
+    const imageFiles = files.filter(f => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(f));
+    
+    // Find all files that contain the accession number
+    const matchingFiles = imageFiles.filter(file => {
+      const upperFile = file.toUpperCase();
+      return upperFile.includes(accession);
+    });
+    
+    if (matchingFiles.length > 0) {
+      // Remove duplicates (case-insensitive filename comparison)
+      const uniqueFiles = [];
+      const seenFiles = new Set();
+      matchingFiles.forEach(file => {
+        const normalized = file.toLowerCase();
+        if (!seenFiles.has(normalized)) {
+          seenFiles.add(normalized);
+          uniqueFiles.push(file);
+        }
+      });
+      
+      // Return all unique matching files
+      const imagePaths = uniqueFiles.map(file => `/images/${file}`);
+      return res.json({ success: true, images: imagePaths });
+    }
+    
+    res.json({ success: false, images: [] });
+  } catch (error) {
+    console.error('❌ Error finding image:', error);
+    res.json({ success: false, images: [] });
   }
 });
 export default router;

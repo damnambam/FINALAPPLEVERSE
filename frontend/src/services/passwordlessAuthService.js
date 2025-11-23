@@ -43,7 +43,43 @@ export const verifyOtp = async (email, otp, userType = "user") => {
 
     if (response.ok && data.token) {
       localStorage.setItem("authToken", data.token);
+      localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
+      localStorage.setItem("userData", JSON.stringify(data.user));
+      localStorage.setItem("isAdmin", userType === "admin" ? "true" : "false");
+      
+      if (userType === "admin") {
+        localStorage.setItem("adminToken", data.token);
+        localStorage.setItem("admin", JSON.stringify(data.user));
+        localStorage.setItem("adminData", JSON.stringify(data.user));
+      }
+      
+      // Restore user's dark mode preference
+      if (data.user && data.user.email) {
+        const savedDarkMode = localStorage.getItem(`darkMode_${data.user.email}`) === 'true';
+        const savedFontSize = localStorage.getItem(`fontSize_${data.user.email}`) || localStorage.getItem('fontSize');
+        const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+        const savedHighContrast = localStorage.getItem(`highContrast_${data.user.email}`) === 'true';
+        
+        localStorage.setItem('darkMode', savedDarkMode);
+        localStorage.setItem('fontSize', fontSize);
+        localStorage.setItem('highContrast', savedHighContrast);
+        
+        // Apply settings immediately
+        if (savedDarkMode) {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+        document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+        document.body.classList.remove('large-text');
+        if (savedHighContrast) {
+          document.body.classList.add('high-contrast');
+        } else {
+          document.body.classList.remove('high-contrast');
+        }
+      }
+      
       return { success: true, token: data.token, user: data.user };
     }
 
@@ -61,7 +97,42 @@ export const verifyOtp = async (email, otp, userType = "user") => {
       };
 
       localStorage.setItem("authToken", mockToken);
+      localStorage.setItem("token", mockToken);
       localStorage.setItem("user", JSON.stringify(mockUser));
+      localStorage.setItem("userData", JSON.stringify(mockUser));
+      localStorage.setItem("isAdmin", userType === "admin" ? "true" : "false");
+      
+      if (userType === "admin") {
+        localStorage.setItem("adminToken", mockToken);
+        localStorage.setItem("admin", JSON.stringify(mockUser));
+        localStorage.setItem("adminData", JSON.stringify(mockUser));
+      }
+      
+      // Restore user's dark mode preference
+      if (mockUser.email) {
+        const savedDarkMode = localStorage.getItem(`darkMode_${mockUser.email}`) === 'true';
+        const savedFontSize = localStorage.getItem(`fontSize_${mockUser.email}`) || localStorage.getItem('fontSize');
+        const fontSize = savedFontSize ? parseInt(savedFontSize, 10) : 16;
+        const savedHighContrast = localStorage.getItem(`highContrast_${mockUser.email}`) === 'true';
+        
+        localStorage.setItem('darkMode', savedDarkMode);
+        localStorage.setItem('fontSize', fontSize);
+        localStorage.setItem('highContrast', savedHighContrast);
+        
+        // Apply settings immediately
+        if (savedDarkMode) {
+          document.body.classList.add('dark-mode');
+        } else {
+          document.body.classList.remove('dark-mode');
+        }
+        document.documentElement.style.setProperty('--user-font-size', `${fontSize}px`);
+        document.body.classList.remove('large-text');
+        if (savedHighContrast) {
+          document.body.classList.add('high-contrast');
+        } else {
+          document.body.classList.remove('high-contrast');
+        }
+      }
 
       console.log("✅ MOCK: Login successful!");
       return { success: true, token: mockToken, user: mockUser };
