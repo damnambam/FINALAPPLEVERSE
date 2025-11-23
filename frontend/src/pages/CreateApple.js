@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import './createApple.css';
 import axios from 'axios';
-import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle } from 'lucide-react';
- 
+import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle, RefreshCw, Copy, XCircle } from 'lucide-react';
+
 export default function CreateApple() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -16,20 +16,19 @@ export default function CreateApple() {
   const [matchedData, setMatchedData] = useState([]);
   const [unmatchedImages, setUnmatchedImages] = useState([]);
   const [unmatchedApples, setUnmatchedApples] = useState([]);
-  const [duplicateApples, setDuplicateApples] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [manualMatches, setManualMatches] = useState({});
+  const [duplicates, setDuplicates] = useState([]);
   const [duplicateResolutions, setDuplicateResolutions] = useState({});
- 
+
   // Statistics
   const [stats, setStats] = useState({
     matched: 0,
     unmatchedImages: 0,
-    unmatchedApples: 0,
-    duplicates: 0
+    unmatchedApples: 0
   });
- 
+
   // Back to start
   const handleBackToStart = () => {
     setStep(0);
@@ -40,136 +39,244 @@ export default function CreateApple() {
     setMatchedData([]);
     setUnmatchedImages([]);
     setUnmatchedApples([]);
-    setDuplicateApples([]);
     setError('');
     setManualMatches({});
+    setDuplicates([]);
     setDuplicateResolutions({});
-    setStats({ matched: 0, unmatchedImages: 0, unmatchedApples: 0, duplicates: 0 });
+    setStats({ matched: 0, unmatchedImages: 0, unmatchedApples: 0 });
   };
- 
-  // STEP 1: Handle CSV Upload
+
+  // STEP 1: Handle CSV/Excel Upload
   const handleCsvChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
- 
+
     const fileName = file.name.toLowerCase();
     if (!fileName.endsWith('.csv') && !fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
       setError('Only CSV or Excel files are allowed.');
       setCsvFile(null);
       return;
     }
- 
+
     setError('');
     setCsvFile(file);
   };
- 
+
+  // ===========================
+  // IMPROVED: Better Validation - List ALL Errors
+  // ===========================
   const handleCsvUpload = async () => {
     if (!csvFile) {
       setError('Please select a CSV or Excel file to upload.');
       return;
     }
- 
+
     setLoading(true);
     setError('');
- 
+
     try {
-      const text = await csvFile.text();
-      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
- 
+      let parsedData = [];
+      const fileName = csvFile.name.toLowerCase();
+
+      // Handle Excel files (.xlsx, .xls)
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const arrayBuffer = await csvFile.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        parsedData = XLSX.utils.sheet_to_json(firstSheet, { 
+          defval: '',
+          raw: false
+        });
+      } 
+      // Handle CSV files
+      else if (fileName.endsWith('.csv')) {
+        const text = await csvFile.text();
+        const workbook = XLSX.read(text, { type: 'string' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        parsedData = XLSX.utils.sheet_to_json(firstSheet, { 
+          defval: '',
+          raw: false
+        });
+      }
+
       // Check if file is empty
-      if (!parsed.data || parsed.data.length === 0) {
+      if (!parsedData || parsedData.length === 0) {
         setError('❌ The file is empty. Please upload a file that contains apple data.');
         setLoading(false);
         return;
       }
- 
-      // Validate that there's at least a cultivar name column
-      const firstRow = parsed.data[0];
-      const hasCultivarName = Object.keys(firstRow).some(key =>
-        key.toLowerCase().includes('cultivar') ||
-        key.toLowerCase().includes('name')
-      );
- 
-      if (!hasCultivarName) {
-        setError('CSV must contain a cultivar name column (e.g., "cultivar_name", "name")');
+
+      // Validate that there are mandatory columns
+      const firstRow = parsedData[0];
+      const headers = Object.keys(firstRow);
+      
+      // Check for cultivar name column
+      const cultivarField = headers.find(key => {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return (
+          normalized.includes('cultivar') && normalized.includes('name') ||
+          normalized === 'name' ||
+          normalized === 'cultivarname' ||
+          normalized === 'cultivar'
+        );
+      });
+      
+      // Check for accession column
+      const accessionField = headers.find(key => {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return (
+          normalized.includes('accession') ||
+          normalized === 'harrowaccession'
+        );
+      });
+
+      if (!cultivarField) {
+        setError('❌ File must contain a "CULTIVAR NAME" or "CULTIVAR_NAME" column. This is a required field.');
         setLoading(false);
         return;
       }
- 
-      // Check for duplicate entries in CSV
-      const cultivarField = Object.keys(firstRow).find(key =>
-        key.toLowerCase().includes('cultivar') ||
-        key.toLowerCase().includes('name')
-      );
-     
-      const accessionField = Object.keys(firstRow).find(key =>
-        key.toLowerCase().includes('accession')
-      );
- 
+      
+      if (!accessionField) {
+        setError('❌ File must contain an "ACCESSION" column. This is a required field.');
+        setLoading(false);
+        return;
+      }
+
+      // ===========================
+      // NEW: Collect ALL validation errors
+      // ===========================
+      const validationErrors = [];
+      
+      parsedData.forEach((row, index) => {
+        const rowNumber = index + 2; // +2 because index 0 is row 2 (after header)
+        const cultivarValue = row[cultivarField];
+        const accessionValue = row[accessionField];
+        
+        const errors = [];
+        
+        if (!cultivarValue || !cultivarValue.toString().trim()) {
+          errors.push('Missing CULTIVAR NAME');
+        }
+        if (!accessionValue || !accessionValue.toString().trim()) {
+          errors.push('Missing ACCESSION');
+        }
+        
+        if (errors.length > 0) {
+          validationErrors.push({
+            row: rowNumber,
+            cultivar: cultivarValue || '(empty)',
+            accession: accessionValue || '(empty)',
+            errors: errors
+          });
+        }
+      });
+      
+      // If there are validation errors, show ALL of them
+      if (validationErrors.length > 0) {
+        const errorList = validationErrors.slice(0, 10).map(item => 
+          `Row ${item.row}: ${item.errors.join(', ')}`
+        ).join('\n');
+        
+        const remaining = validationErrors.length - 10;
+        const summary = validationErrors.length > 10 
+          ? `\n...and ${remaining} more row(s) with errors.`
+          : '';
+        
+        setError(
+          `❌ Found ${validationErrors.length} row(s) with missing mandatory fields:\n\n${errorList}${summary}\n\nBoth ACCESSION and CULTIVAR NAME are required for every row.`
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Check for duplicate entries within the CSV
       const seen = new Set();
-      const duplicates = [];
+      const duplicatesInFile = [];
      
-      parsed.data.forEach((row, index) => {
-        const identifier = accessionField ?
-          `${row[accessionField]}_${row[cultivarField]}` :
-          row[cultivarField];
+      parsedData.forEach((row, index) => {
+        const identifier = `${row[accessionField]}_${row[cultivarField]}`.toLowerCase().trim();
        
         if (seen.has(identifier)) {
-          duplicates.push({ row: index + 2, name: row[cultivarField] }); // +2 for header and 0-index
+          duplicatesInFile.push({ 
+            row: index + 2, 
+            accession: row[accessionField],
+            name: row[cultivarField] 
+          });
         }
         seen.add(identifier);
       });
- 
-      if (duplicates.length > 0) {
-        setError(`❌ Duplicate entries found in CSV: ${duplicates.map(d => `${d.name} (row ${d.row})`).join(', ')}. Please remove duplicates and try again.`);
+
+      if (duplicatesInFile.length > 0) {
+        const dupeList = duplicatesInFile.slice(0, 5).map(d => 
+          `Row ${d.row}: ${d.accession} - ${d.name}`
+        ).join('\n');
+        const remaining = duplicatesInFile.length - 5;
+        const summary = remaining > 0 ? `\n...and ${remaining} more duplicate(s).` : '';
+        
+        setError(
+          `❌ Found ${duplicatesInFile.length} duplicate entries in your file:\n\n${dupeList}${summary}\n\nPlease remove duplicates and try again.`
+        );
         setLoading(false);
         return;
       }
- 
-      setCsvData(parsed.data);
-      console.log('✅ CSV parsed:', parsed.data.length, 'rows');
+
+      // Remove IMAGES column if present (will be auto-populated after upload)
+      parsedData.forEach(row => {
+        Object.keys(row).forEach(key => {
+          if (key.toLowerCase().replace(/[^a-z]/g, '') === 'images') {
+            delete row[key];
+          }
+        });
+      });
+
+      setCsvData(parsedData);
+      console.log('✅ File parsed:', parsedData.length, 'rows');
+      console.log('✅ Validation passed - no missing fields');
      
       // Automatically move to Step 2
       setStep(2);
     } catch (err) {
-      console.error('❌ CSV parse error:', err);
-      setError('Failed to parse CSV file: ' + err.message);
+      console.error('❌ Parse error:', err);
+      setError('Failed to parse file: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
- 
+
   // STEP 2: Handle ZIP Upload
   const handleZipChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
- 
+
     if (!file.name.toLowerCase().endsWith('.zip')) {
       setError('Only ZIP files are allowed for image upload.');
       setImagesZip(null);
       return;
     }
- 
+
     setError('');
     setImagesZip(file);
   };
- 
+
+  // ===========================
+  // IMPROVED: Better Symbol Handling in Image Matching
+  // ===========================
   const handleMatchImages = async () => {
     if (!imagesZip) {
       setError('Please select a ZIP file containing images.');
       return;
     }
- 
+
     setLoading(true);
     setError('');
- 
+
     try {
       const zip = new JSZip();
       const contents = await zip.loadAsync(imagesZip);
      
       const imageFiles = [];
       for (const [filename, file] of Object.entries(contents.files)) {
-        if (!file.dir && /\.(jpg|jpeg|png|gif|bmp)$/i.test(filename)) {
+        if (!file.dir && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(filename)) {
           const blob = await file.async('blob');
           const cleanFilename = filename.split('/').pop();
           imageFiles.push({
@@ -179,16 +286,16 @@ export default function CreateApple() {
           });
         }
       }
- 
+
       if (imageFiles.length === 0) {
         setError('No valid image files found in the ZIP.');
         setLoading(false);
         return;
       }
- 
+
       console.log('✅ Extracted images:', imageFiles.length);
       setExtractedImages(imageFiles);
- 
+
       // Match images to apples
       performMatching(imageFiles);
      
@@ -201,208 +308,369 @@ export default function CreateApple() {
       setLoading(false);
     }
   };
- 
+
+  // ===========================
+  // IMPROVED: Better matching with ALL symbols supported
+  // ===========================
   const performMatching = (images) => {
     const matched = [];
     const unmatchedImgs = [];
     const unmatchedApps = [];
- 
-    // Get cultivar name field and accession field
+
+    // Get field names
     const firstRow = csvData[0];
-    const cultivarField = Object.keys(firstRow).find(key =>
-      key.toLowerCase().includes('cultivar') ||
-      key.toLowerCase().includes('name')
-    );
+    const headers = Object.keys(firstRow);
+    
+    const cultivarField = headers.find(key => {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (
+        normalized.includes('cultivar') && normalized.includes('name') ||
+        normalized === 'name' ||
+        normalized === 'cultivarname'
+      );
+    });
    
-    const accessionField = Object.keys(firstRow).find(key =>
-      key.toLowerCase().includes('accession')
-    );
- 
-    csvData.forEach(apple => {
+    const accessionField = headers.find(key => {
+      const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+      return (
+        normalized.includes('accession') ||
+        normalized === 'harrowaccession'
+      );
+    });
+
+    // Track which images have been matched
+    const matchedImageNames = new Set();
+
+    csvData.forEach((apple, appleIndex) => {
       const cultivarName = apple[cultivarField];
-      const accessionNumber = accessionField ? apple[accessionField] : '';
+      const accessionNumber = apple[accessionField];
      
-      if (!cultivarName) return;
- 
-      // Create expected image name pattern: accessionNumber_cultivarName
-      const expectedPattern = accessionNumber ?
-        `${accessionNumber}_${cultivarName}`.toLowerCase().replace(/[^a-z0-9_]/g, '') :
-        cultivarName.toLowerCase().replace(/[^a-z0-9]/g, '');
-     
-      // Find all matching images (could be multiple)
-      const matchedImages = images.filter(img => {
-        const cleanImgName = img.name.toLowerCase()
-          .replace(/\.(jpg|jpeg|png|gif|bmp)$/i, '')
-          .replace(/[^a-z0-9_]/g, '');
+      if (!cultivarName || !accessionNumber) return;
+
+      // ===========================
+      // IMPROVED: Better pattern matching with symbol support
+      // ===========================
+      // Create multiple search patterns with different symbol handling
+      const createSearchPattern = (text) => {
+        if (!text) return '';
+        return text.toLowerCase()
+          .replace(/[^a-z0-9]/g, ''); // Remove ALL non-alphanumeric
+      };
+
+      const accessionPattern = createSearchPattern(accessionNumber);
+      const cultivarPattern = createSearchPattern(cultivarName);
+      const combinedPattern = createSearchPattern(`${accessionNumber}_${cultivarName}`);
+      
+      // Find matching images
+      const appleImages = [];
+      
+      for (const img of images) {
+        if (matchedImageNames.has(img.name)) continue; // Skip already matched
+        
+        const cleanImgName = createSearchPattern(img.name);
        
-        return cleanImgName.includes(expectedPattern) ||
-               expectedPattern.includes(cleanImgName) ||
-               cleanImgName.startsWith(expectedPattern);
-      });
- 
-      if (matchedImages.length > 0) {
-        // Add all matched images for this apple
-        matchedImages.forEach(img => {
-          matched.push({
-            apple: apple,
-            image: img,
-            cultivarName: cultivarName,
-            accessionNumber: accessionNumber
-          });
+        // Try multiple matching strategies
+        const isMatch = 
+          // Strategy 1: Exact accession match
+          (accessionPattern.length > 0 && cleanImgName.includes(accessionPattern)) ||
+          // Strategy 2: Cultivar name match (only if > 3 chars to avoid false positives)
+          (cultivarPattern.length > 3 && cleanImgName.includes(cultivarPattern)) ||
+          // Strategy 3: Combined pattern
+          (combinedPattern.length > 0 && cleanImgName.includes(combinedPattern)) ||
+          // Strategy 4: Image starts with accession
+          (accessionPattern.length > 0 && cleanImgName.startsWith(accessionPattern));
+
+        if (isMatch) {
+          appleImages.push(img);
+          matchedImageNames.add(img.name);
+        }
+      }
+
+      if (appleImages.length > 0) {
+        matched.push({
+          appleIndex: appleIndex,
+          apple: apple,
+          images: appleImages,
+          cultivarName: cultivarName,
+          accessionNumber: accessionNumber,
+          imageCount: appleImages.length
         });
       } else {
         unmatchedApps.push({
+          appleIndex: appleIndex,
           apple: apple,
           cultivarName: cultivarName,
           accessionNumber: accessionNumber
         });
       }
     });
- 
+
     // Find unmatched images
-    const matchedImageNames = matched.map(m => m.image.name);
-    unmatchedImgs.push(...images.filter(img => !matchedImageNames.includes(img.name)));
- 
+    unmatchedImgs.push(...images.filter(img => !matchedImageNames.has(img.name)));
+
     setMatchedData(matched);
     setUnmatchedImages(unmatchedImgs);
     setUnmatchedApples(unmatchedApps);
- 
+
     setStats({
       matched: matched.length,
       unmatchedImages: unmatchedImgs.length,
-      unmatchedApples: unmatchedApps.length,
-      duplicates: 0
+      unmatchedApples: unmatchedApps.length
     });
- 
+
     console.log('📊 Matching complete:', {
       matched: matched.length,
       unmatchedImages: unmatchedImgs.length,
       unmatchedApples: unmatchedApps.length
     });
   };
- 
+
   // Handle manual matching
   const handleManualMatch = (appleIndex, imageName) => {
     const newMatches = { ...manualMatches };
     newMatches[appleIndex] = imageName;
     setManualMatches(newMatches);
- 
-    // Update stats
+
     const manualMatchCount = Object.keys(newMatches).filter(k => newMatches[k]).length;
     setStats(prev => ({
       ...prev,
       unmatchedApples: unmatchedApples.length - manualMatchCount
     }));
   };
- 
-  // STEP 3: Save to Database
-const handleSaveToDatabase = async () => {
-  setLoading(true);
- 
-  try {
-    // Combine matched data with manual matches
-    const finalData = [...matchedData];
-   
-    unmatchedApples.forEach((item, index) => {
-      if (manualMatches[index]) {
-        const selectedImage = extractedImages.find(img => img.name === manualMatches[index]);
-        if (selectedImage) {
+
+  // ===========================
+  // NEW: Handle duplicate resolution
+  // ===========================
+  const handleDuplicateResolution = (index, action) => {
+    const newResolutions = { ...duplicateResolutions };
+    newResolutions[index] = action;
+    setDuplicateResolutions(newResolutions);
+  };
+
+  // ===========================
+  // IMPROVED: Check for duplicates before saving
+  // ===========================
+  const handleSaveToDatabase = async () => {
+    setLoading(true);
+
+    try {
+      // Combine matched data with manual matches
+      const finalData = [...matchedData];
+     
+      unmatchedApples.forEach((item) => {
+        if (manualMatches[item.appleIndex]) {
+          const selectedImage = extractedImages.find(img => img.name === manualMatches[item.appleIndex]);
+          if (selectedImage) {
+            finalData.push({
+              appleIndex: item.appleIndex,
+              apple: item.apple,
+              images: [selectedImage],
+              cultivarName: item.cultivarName,
+              accessionNumber: item.accessionNumber,
+              imageCount: 1
+            });
+          }
+        } else {
+          // Include apples without images
           finalData.push({
+            appleIndex: item.appleIndex,
             apple: item.apple,
-            image: selectedImage,
+            images: [],
             cultivarName: item.cultivarName,
-            accessionNumber: item.accessionNumber
+            accessionNumber: item.accessionNumber,
+            imageCount: 0
           });
         }
-      }
-    });
- 
-    console.log('💾 Saving to database:', finalData.length, 'entries');
-    console.log('🔍 DEBUG: finalData structure:', finalData);
-    console.log('🔍 DEBUG: First item:', finalData[0]);
- 
-    // Create FormData for upload
-    const formData = new FormData();
-   
-    finalData.forEach((item, index) => {
-      // Add apple data with index notation
-      formData.append(`apples[${index}]`, JSON.stringify(item.apple));
+      });
+
+      console.log('💾 Preparing to save:', finalData.length, 'entries');
+
+      // Create FormData for upload
+      const formData = new FormData();
      
-      // Add image blob (all use same field name 'images')
-      if (item.image && item.image.blob) {
-        formData.append('images', item.image.blob, item.image.name);
+      // Add apple data and images
+      finalData.forEach((item) => {
+        formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
+       
+        if (item.images && item.images.length > 0) {
+          item.images.forEach((img) => {
+            formData.append(`images_${item.appleIndex}`, img.blob, img.name);
+          });
+        }
+        
+        // Add image count for backend to auto-populate IMAGES column
+        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
+      });
+
+      // Get admin token
+      const adminToken = localStorage.getItem('adminToken');
+
+      if (!adminToken) {
+        setLoading(false);
+        alert('❌ You must be logged in as admin to upload apples.');
+        navigate('/signup-login');
+        return;
       }
-    });
- 
-    // Debug: Check FormData contents
-    console.log('📋 FormData contents:');
-    for (let pair of formData.entries()) {
-      if (pair[0].startsWith('apples')) {
-        console.log('🍎', pair[0], ':', pair[1].substring(0, 100) + '...');
+
+      // ===========================
+      // NEW: Check for duplicates first
+      // ===========================
+      console.log('🔍 Checking for duplicates in database...');
+      
+      const response = await axios.post(
+        'http://localhost:5000/api/apples/bulk-upload-with-images', 
+        formData, 
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${adminToken}`
+          }
+        }
+      );
+
+      console.log('✅ Upload response:', response.data);
+      
+      // ===========================
+      // NEW: Handle duplicate response
+      // ===========================
+      if (response.data.duplicates && response.data.duplicates.length > 0) {
+        setDuplicates(response.data.duplicates);
+        setLoading(false);
+        // Stay on current step to show duplicate resolution UI
+        return;
       }
-      if (pair[0] === 'images') {
-        console.log('📸', pair[0], ':', pair[1] instanceof Blob ? `Blob: ${pair[1].size} bytes` : pair[1]);
+      
+      if (response.data.stats.failed > 0) {
+        alert(`⚠️ Upload completed with warnings:\n✅ ${response.data.stats.successful} apple(s) uploaded\n❌ ${response.data.stats.failed} failed\n\nCheck console for details.`);
+        console.log('Failed items:', response.data.errors);
+      } else {
+        alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s) with ${response.data.stats.totalImages || 0} images!`);
       }
-    }
- 
-    console.log('📤 Sending to backend:', finalData.length, 'items');
- 
-     // Get admin token from localStorage
-    const adminToken = localStorage.getItem('adminToken');
- 
-    if (!adminToken) {
+     
+      handleBackToStart();
+     
+    } catch (err) {
+      console.error('❌ Save error:', err);
+     
+      if (err.response?.status === 401) {
+        alert('❌ Authentication failed. Please log in again as admin.');
+        navigate('/signup-login');
+      } else if (err.response?.status === 400) {
+        const errorMsg = err.response?.data?.message || 'Validation error';
+        alert(`❌ Validation Error:\n${errorMsg}`);
+      } else {
+        alert(`❌ Error: ${err.response?.data?.message || err.message || 'Save failed'}`);
+      }
+    } finally {
       setLoading(false);
-      alert('❌ You must be logged in as admin to upload apples.');
-      navigate('/signup-login');
-      return;
     }
- 
-    console.log('🔐 Using admin token for upload');
- 
-    // Send to backend with authentication
-    const response = await axios.post('http://localhost:5000/api/apples/bulk-upload-with-images', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        'Authorization': `Bearer ${adminToken}`
+  };
+
+  // ===========================
+  // NEW: Handle duplicate resolution and resubmit
+  // ===========================
+  const handleResolveDuplicates = async () => {
+    setLoading(true);
+
+    try {
+      // Check if all duplicates have been resolved
+      const unresolvedCount = duplicates.filter(
+        (_, index) => !duplicateResolutions[index]
+      ).length;
+
+      if (unresolvedCount > 0) {
+        alert(`⚠️ Please make a decision for all ${unresolvedCount} duplicate(s) before proceeding.`);
+        setLoading(false);
+        return;
       }
-    });
- 
-    console.log('✅ Upload response:', response.data);
-    alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s) with images!`);
-   
-    // Reset and go back to start
-    handleBackToStart();
-   
-   } catch (err) {
-    console.error('❌ Save error:', err);
-    console.error('❌ Error response:', err.response?.data);
-    console.error('❌ Status code:', err.response?.status);
-   
-    if (err.response?.status === 401) {
-      alert('❌ Authentication failed. Please log in again as admin.');
-      navigate('/signup-login');
-    } else {
-      alert(`❌ Error: ${err.response?.data?.message || err.message || 'Save failed'}`);
+
+      // Rebuild FormData with resolution instructions
+      const finalData = [...matchedData];
+      unmatchedApples.forEach((item) => {
+        if (manualMatches[item.appleIndex]) {
+          const selectedImage = extractedImages.find(img => img.name === manualMatches[item.appleIndex]);
+          if (selectedImage) {
+            finalData.push({
+              appleIndex: item.appleIndex,
+              apple: item.apple,
+              images: [selectedImage],
+              cultivarName: item.cultivarName,
+              accessionNumber: item.accessionNumber,
+              imageCount: 1
+            });
+          }
+        } else {
+          finalData.push({
+            appleIndex: item.appleIndex,
+            apple: item.apple,
+            images: [],
+            cultivarName: item.cultivarName,
+            accessionNumber: item.accessionNumber,
+            imageCount: 0
+          });
+        }
+      });
+
+      const formData = new FormData();
+      formData.append('duplicateResolutions', JSON.stringify(duplicateResolutions));
+     
+      finalData.forEach((item) => {
+        formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
+       
+        if (item.images && item.images.length > 0) {
+          item.images.forEach((img) => {
+            formData.append(`images_${item.appleIndex}`, img.blob, img.name);
+          });
+        }
+        
+        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
+      });
+
+      const adminToken = localStorage.getItem('adminToken');
+
+      const response = await axios.post(
+        'http://localhost:5000/api/apples/bulk-upload-with-images', 
+        formData, 
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${adminToken}`
+          }
+        }
+      );
+
+      console.log('✅ Final upload response:', response.data);
+      
+      alert(`🎉 Successfully processed ${response.data.stats.successful} apple(s)!\n\n` +
+        `Replaced: ${response.data.stats.replaced || 0}\n` +
+        `Duplicated: ${response.data.stats.duplicated || 0}\n` +
+        `Skipped: ${response.data.stats.skipped || 0}`
+      );
+     
+      handleBackToStart();
+     
+    } catch (err) {
+      console.error('❌ Resolution error:', err);
+      alert(`❌ Error: ${err.response?.data?.message || err.message || 'Failed to process duplicates'}`);
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-};
- 
+  };
+
   return (
     <div className="create-apple-container">
       <h1 className="page-title">Create New Apple Resource 🍎</h1>
- 
+
       {/* Timeline */}
       <div className="timeline">
-        {['Choose Method', 'Upload CSV', 'Upload Images', 'Review & Save'].map((label, idx) => (
+        {['Choose Method', 'Upload File', 'Upload Images', 'Review & Save'].map((label, idx) => (
           <div key={idx} className={`timeline-step ${step === idx ? 'active' : ''} ${step > idx ? 'completed' : ''}`}>
             <div className="circle">{step > idx ? '✓' : idx + 1}</div>
             <span>{label}</span>
           </div>
         ))}
       </div>
- 
+
       {/* Step Content */}
       <div className="step-content-card">
        
@@ -415,60 +683,52 @@ const handleSaveToDatabase = async () => {
              
               <div className="instruction-item">
                 <strong>1. Single Upload</strong>
-                <p>Manually enter details for one apple at a time. You can upload images and fill in all information individually. If you need to make specific changes to an existing apple entry later, you can edit it directly from the library.</p>
+                <p>Manually enter details for one apple at a time.</p>
               </div>
              
               <div className="instruction-item">
                 <strong>2. Multiple Upload (Bulk)</strong>
-                <p>Upload multiple apple entries at once using a CSV or Excel file along with their images. This is faster for adding many apples. Your file must follow the template format.</p>
+                <p>Upload multiple apple entries using CSV or Excel files. <strong>Required: ACCESSION and CULTIVAR NAME</strong>.</p>
               </div>
              
               <div className="instruction-item">
                 <strong>3. Template Creator</strong>
-                <p>Download the Excel template that shows the required format for bulk uploads. Your CSV/Excel file must follow this template structure.</p>
+                <p>Download the Excel template with all standardized fields.</p>
               </div>
- 
+
               <div className="note-box">
-                <strong>📝 Note:</strong> If you upload an apple that already exists in the database, you'll be asked in the review phase whether to keep the old information, replace it with new data, or make specific edits directly in the library.
+                <strong>📝 Template Structure:</strong>
+                <ul>
+                  <li><strong>Mandatory:</strong> ACCESSION, CULTIVAR NAME</li>
+                  <li><strong>Optional:</strong> 50+ additional standardized fields</li>
+                  <li><strong>IMAGES column:</strong> Auto-populated after upload based on actual images uploaded</li>
+                  <li><strong>Symbols:</strong> All special characters (#, &, /, etc.) fully supported!</li>
+                </ul>
               </div>
             </div>
- 
+
             <div className="upload-options">
-              <button
-                className="upload-btn single"
-                onClick={() => navigate('/single-apple')}
-              >
+              <button className="upload-btn single" onClick={() => navigate('/single-apple')}>
                 Single Upload
               </button>
- 
-              <button
-                className="upload-btn multiple"
-                onClick={() => setStep(1)}
-              >
+              <button className="upload-btn multiple" onClick={() => setStep(1)}>
                 Multiple Upload
               </button>
- 
-              <button
-                className="upload-btn template"
-                onClick={() => navigate('/template-creator')}
-              >
+              <button className="upload-btn template" onClick={() => navigate('/template-creator')}>
                 Download Template
               </button>
             </div>
- 
+
             <div style={{ textAlign: 'center', marginTop: '30px' }}>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="btn-secondary"
-              >
+              <button onClick={() => navigate('/dashboard')} className="btn-secondary">
                 <ArrowLeft size={18} />
                 Back to Dashboard
               </button>
             </div>
           </div>
         )}
- 
-        {/* STEP 1: UPLOAD CSV */}
+
+        {/* STEP 1: UPLOAD CSV/EXCEL */}
         {step === 1 && (
           <div className="step">
             <h2><FileSpreadsheet size={28} /> Upload Your CSV or Excel File</h2>
@@ -477,59 +737,61 @@ const handleSaveToDatabase = async () => {
              
               <div className="instruction-item">
                 <strong>✓ Accepted Formats:</strong>
-                <p>Only CSV (.csv) or Excel (.xlsx, .xls) files are accepted.</p>
+                <p>CSV (.csv), Excel (.xlsx, .xls)</p>
               </div>
- 
+
               <div className="instruction-item">
-                <strong>✓ File Must Not Be Empty:</strong>
-                <p>Your file must contain apple data. Empty files will be rejected.</p>
+                <strong>✓ Mandatory Columns:</strong>
+                <p><strong>ACCESSION</strong> - Unique identifier</p>
+                <p><strong>CULTIVAR NAME</strong> - Apple variety name (all symbols supported: #, &, /, etc.)</p>
+                <p className="error-text">⚠️ Both required for every row!</p>
               </div>
- 
+
               <div className="instruction-item">
-                <strong>✓ No Duplicate Entries:</strong>
-                <p>Each apple entry must be unique. If duplicates are found, you'll need to remove them before uploading.</p>
+                <strong>✓ IMAGES Column:</strong>
+                <p>Not needed - will be auto-filled after upload based on actual images</p>
               </div>
- 
+
               <div className="instruction-item">
-                <strong>✓ Required Columns:</strong>
-                <p>Your file must include cultivar name and follow the template format. Download the template from the Template Creator if you haven't already.</p>
+                <strong>✓ Duplicate Detection:</strong>
+                <p>System will check if apples already exist and ask what you want to do</p>
+              </div>
+
+              <div className="instruction-item">
+                <strong>✓ Validation:</strong>
+                <p>All rows with missing fields will be listed before upload</p>
               </div>
             </div>
- 
+
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
               onChange={handleCsvChange}
             />
- 
+
             {csvFile && (
               <div className="file-selected-box">
                 <p>✓ Selected: {csvFile.name} ({(csvFile.size / 1024).toFixed(2)} KB)</p>
               </div>
             )}
- 
-            {error && (
-              <div className="error-box">
-                <p>{error}</p>
-              </div>
-            )}
- 
+
+            {error && <div className="error-box" style={{ whiteSpace: 'pre-line' }}><p>{error}</p></div>}
+
             <div className="navigation-buttons">
               <button className="btn-secondary" onClick={handleBackToStart}>
-                <ArrowLeft size={18} />
-                Back
+                <ArrowLeft size={18} /> Back
               </button>
               <button
                 className="btn-primary"
                 onClick={handleCsvUpload}
                 disabled={!csvFile || loading}
               >
-                {loading ? '⏳ Processing...' : <><Upload size={18} /> Upload CSV</>}
+                {loading ? '⏳ Processing...' : <><Upload size={18} /> Upload File</>}
               </button>
             </div>
           </div>
         )}
- 
+
         {/* STEP 2: UPLOAD IMAGES */}
         {step === 2 && (
           <div className="step">
@@ -538,159 +800,254 @@ const handleSaveToDatabase = async () => {
               <h3>Image Naming Convention</h3>
              
               <div className="instruction-item">
-                <strong>✓ File Format:</strong>
-                <p>Upload a ZIP file containing all your apple images.</p>
+                <strong>✓ Recommended - Use ACCESSION:</strong>
+                <p><code>MAL0100.jpg</code> or <code>MAL0100_1.jpg</code>, <code>MAL0100_2.jpg</code></p>
+                <p className="success-text">✅ Works with ALL cultivar names, including special characters!</p>
               </div>
- 
+
               <div className="instruction-item">
-                <strong>✓ Image Name Format:</strong>
-                <p><code>AccessionNumber_CultivarName</code></p>
-                <p>Example: <code>12345_Honeycrisp.jpg</code></p>
+                <strong>✓ Alternative - Clean Cultivar Name:</strong>
+                <p>For "Heyer #6": <code>MAL0100_Heyer_6.jpg</code> (replace # with _)</p>
+                <p>For "King": <code>MAL0101_King.jpg</code></p>
               </div>
- 
+
               <div className="instruction-item">
-                <strong>✓ Cross-Section Images:</strong>
-                <p>If you have cross-section images, add <code>_crosssection</code> to the name:</p>
-                <p>Example: <code>12345_Honeycrisp_crosssection.jpg</code></p>
+                <strong>✓ Symbol Handling:</strong>
+                <p>System automatically handles all symbols (#, &, /, etc.) in matching</p>
               </div>
- 
-              <div className="instruction-item">
-                <strong>✓ Multiple Images Per Apple:</strong>
-                <p>If you have multiple images for the same apple, add numbers (1, 2, 3) at the end:</p>
-                <p>Examples: <code>12345_Honeycrisp_1.jpg</code>, <code>12345_Honeycrisp_2.jpg</code></p>
-              </div>
- 
+
               <div className="instruction-item">
                 <strong>✓ Supported Formats:</strong>
-                <p>JPG, JPEG, PNG, GIF, BMP</p>
-              </div>
- 
-              <div className="note-box">
-                <strong>📝 Note:</strong> If there are duplicate image names or naming conflicts, you'll be able to resolve them in the review phase.
+                <p>JPG, JPEG, PNG, GIF, BMP, WEBP</p>
               </div>
             </div>
- 
+
             <div className="info-box">
-              <p>✓ CSV Uploaded: {csvData.length} cultivars loaded</p>
+              <p>✓ File uploaded: {csvData.length} cultivars loaded</p>
+              <p>✓ All mandatory fields validated</p>
             </div>
- 
-            <input
-              type="file"
-              accept=".zip"
-              onChange={handleZipChange}
-            />
- 
+
+            <input type="file" accept=".zip" onChange={handleZipChange} />
+
             {imagesZip && (
               <div className="file-selected-box">
                 <p>✓ Selected: {imagesZip.name} ({(imagesZip.size / 1024).toFixed(2)} KB)</p>
               </div>
             )}
- 
-            {error && (
-              <div className="error-box">
-                <p>{error}</p>
-              </div>
-            )}
- 
+
+            {error && <div className="error-box"><p>{error}</p></div>}
+
             <div className="navigation-buttons">
               <button className="btn-secondary" onClick={() => setStep(1)}>
-                <ArrowLeft size={18} />
-                Back
+                <ArrowLeft size={18} /> Back
               </button>
               <button
                 className="btn-primary"
                 onClick={handleMatchImages}
                 disabled={!imagesZip || loading}
-                style={{ background: 'linear-gradient(135deg, #4caf50, #66bb6a)' }}
               >
-                {loading ? '⏳ Processing...' : <>🔍 Match Images to Apples</>}
+                {loading ? '⏳ Processing...' : <>🔍 Match Images</>}
               </button>
             </div>
           </div>
         )}
- 
+
         {/* STEP 3: REVIEW & SAVE */}
         {step === 3 && (
           <div className="step">
-            <h2><CheckCircle size={28} /> Review and Save</h2>
-           
-            {/* Statistics */}
-            <div className="stats-grid">
-              <div className="stat-card success">
-                <div className="stat-number">{stats.matched}</div>
-                <div className="stat-label">✓ Matched</div>
-              </div>
-              <div className="stat-card warning">
-                <div className="stat-number">{stats.unmatchedImages}</div>
-                <div className="stat-label">⚠ Unmatched Images</div>
-              </div>
-              <div className="stat-card error">
-                <div className="stat-number">{unmatchedApples.length - Object.keys(manualMatches).filter(k => manualMatches[k]).length}</div>
-                <div className="stat-label">⚠ Unmatched Apples</div>
-              </div>
-            </div>
- 
-            {/* Manual Matching Section */}
-            {unmatchedApples.length > 0 && (
-              <div className="manual-matching-section">
-                <h3>
-                  <AlertCircle size={20} />
-                  Manual Matching Required
-                </h3>
-                <p>The following cultivars need images. Please select from unmatched images:</p>
-               
-                {unmatchedApples.map((item, index) => (
-                  <div key={index} className="match-item">
-                    <strong>{item.accessionNumber ? `${item.accessionNumber} - ` : ''}{item.cultivarName}</strong>
-                    <select
-                      value={manualMatches[index] || ''}
-                      onChange={(e) => handleManualMatch(index, e.target.value)}
-                      className="match-select"
-                    >
-                      <option value="">-- Select Image --</option>
-                      {unmatchedImages.map((img, imgIndex) => (
-                        <option key={imgIndex} value={img.name}>{img.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
- 
-            {/* Matched Preview */}
-            {matchedData.length > 0 && (
-              <div className="matched-preview">
-                <h3>✓ Successfully Matched ({matchedData.length})</h3>
-                <div className="preview-grid">
-                  {matchedData.slice(0, 6).map((item, index) => (
-                    <div key={index} className="preview-item">
-                      <img src={item.image.url} alt={item.cultivarName} />
-                      <div className="preview-name">{item.accessionNumber ? `${item.accessionNumber} - ` : ''}{item.cultivarName}</div>
+            {/* Show duplicate resolution if duplicates exist */}
+            {duplicates.length > 0 ? (
+              <div>
+                <h2><AlertCircle size={28} style={{ color: '#f59e0b' }} /> Duplicates Found</h2>
+                
+                <div className="info-box" style={{ background: '#fef3c7', borderColor: '#f59e0b', marginBottom: '20px' }}>
+                  <p><strong>⚠️ Found {duplicates.length} apple(s) that already exist in the database.</strong></p>
+                  <p>Please choose what to do with each duplicate:</p>
+                </div>
+
+                <div className="duplicates-list">
+                  {duplicates.map((dup, index) => (
+                    <div key={index} className="duplicate-item" style={{ 
+                      border: '1px solid #d1d5db', 
+                      borderRadius: '8px', 
+                      padding: '16px', 
+                      marginBottom: '12px',
+                      background: '#f9fafb'
+                    }}>
+                      <div style={{ marginBottom: '12px' }}>
+                        <strong>{dup.accession} - {dup.cultivar_name}</strong>
+                        <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
+                          Already exists in database (uploaded: {new Date(dup.createdAt).toLocaleDateString()})
+                        </p>
+                      </div>
+                      
+                      <div className="duplicate-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'replace' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'replace')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'replace' ? '#3b82f6' : 'white',
+                            borderColor: duplicateResolutions[index] === 'replace' ? '#3b82f6' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'replace' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <RefreshCw size={16} />
+                          Replace
+                        </button>
+                        
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'duplicate' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'duplicate')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'duplicate' ? '#10b981' : 'white',
+                            borderColor: duplicateResolutions[index] === 'duplicate' ? '#10b981' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'duplicate' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <Copy size={16} />
+                          Create Duplicate
+                        </button>
+                        
+                        <button
+                          className={`duplicate-btn ${duplicateResolutions[index] === 'skip' ? 'selected' : ''}`}
+                          onClick={() => handleDuplicateResolution(index, 'skip')}
+                          style={{
+                            padding: '8px 16px',
+                            border: '2px solid',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: duplicateResolutions[index] === 'skip' ? '#6b7280' : 'white',
+                            borderColor: duplicateResolutions[index] === 'skip' ? '#6b7280' : '#d1d5db',
+                            color: duplicateResolutions[index] === 'skip' ? 'white' : '#374151',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          <XCircle size={16} />
+                          Skip
+                        </button>
+                      </div>
                     </div>
                   ))}
-                  {matchedData.length > 6 && (
-                    <div className="preview-more">
-                      +{matchedData.length - 6} more
+                </div>
+
+                <div className="navigation-buttons" style={{ marginTop: '24px' }}>
+                  <button className="btn-secondary" onClick={handleBackToStart}>
+                    <ArrowLeft size={18} /> Cancel
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleResolveDuplicates}
+                    disabled={loading}
+                  >
+                    {loading ? '⏳ Processing...' : <>✓ Proceed with Selections</>}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <h2><CheckCircle size={28} /> Review and Save</h2>
+           
+                {/* Statistics */}
+                <div className="stats-grid">
+                  <div className="stat-card success">
+                    <div className="stat-number">{stats.matched}</div>
+                    <div className="stat-label">✓ Matched</div>
+                  </div>
+                  <div className="stat-card warning">
+                    <div className="stat-number">{stats.unmatchedImages}</div>
+                    <div className="stat-label">⚠ Unmatched Images</div>
+                  </div>
+                  <div className="stat-card error">
+                    <div className="stat-number">{unmatchedApples.length - Object.keys(manualMatches).filter(k => manualMatches[k]).length}</div>
+                    <div className="stat-label">⚠ Unmatched Apples</div>
+                  </div>
+                </div>
+
+                {/* Manual Matching */}
+                {unmatchedApples.length > 0 && (
+                  <div className="manual-matching-section">
+                    <h3><AlertCircle size={20} /> Manual Matching</h3>
+                    <p>Select images for these cultivars (or leave blank):</p>
+               
+                    {unmatchedApples.map((item) => (
+                      <div key={item.appleIndex} className="match-item">
+                        <strong>{item.accessionNumber} - {item.cultivarName}</strong>
+                        <select
+                          value={manualMatches[item.appleIndex] || ''}
+                          onChange={(e) => handleManualMatch(item.appleIndex, e.target.value)}
+                          className="match-select"
+                        >
+                          <option value="">-- No Image (Skip) --</option>
+                          {unmatchedImages.map((img, imgIndex) => (
+                            <option key={imgIndex} value={img.name}>{img.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Matched Preview */}
+                {matchedData.length > 0 && (
+                  <div className="matched-preview">
+                    <h3>✓ Successfully Matched ({matchedData.length})</h3>
+                    <div className="preview-grid">
+                      {matchedData.slice(0, 6).map((item, index) => (
+                        <div key={index} className="preview-item">
+                          <img src={item.images[0].url} alt={item.cultivarName} />
+                          <div className="preview-name">
+                            {item.accessionNumber} - {item.cultivarName}
+                            <br/>
+                            <small>{item.imageCount} image(s)</small>
+                          </div>
+                        </div>
+                      ))}
+                      {matchedData.length > 6 && (
+                        <div className="preview-more">
+                          +{matchedData.length - 6} more
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                )}
+            
+                <div className="info-box" style={{ marginTop: '20px' }}>
+                  <p><strong>ℹ️ Ready to save:</strong></p>
+                  <p>• {matchedData.reduce((sum, item) => sum + item.imageCount, 0)} total images matched</p>
+                  <p>• {matchedData.length + unmatchedApples.length} total apples</p>
+                  <p>• IMAGES column will be auto-populated based on actual uploaded images</p>
+                </div>
+
+                <div className="navigation-buttons">
+                  <button className="btn-secondary" onClick={handleBackToStart}>
+                    <ArrowLeft size={18} /> Start Over
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleSaveToDatabase}
+                    disabled={loading}
+                  >
+                    {loading ? '⏳ Saving...' : <>💾 Save to Database</>}
+                  </button>
                 </div>
               </div>
             )}
- 
-            <div className="navigation-buttons">
-              <button className="btn-secondary" onClick={handleBackToStart}>
-                <ArrowLeft size={18} />
-                Start Over
-              </button>
-              <button
-                className="btn-primary"
-                onClick={handleSaveToDatabase}
-                disabled={loading}
-                style={{ background: 'linear-gradient(135deg, #4caf50, #66bb6a)' }}
-              >
-                {loading ? '⏳ Saving...' : <>💾 Save to Database</>}
-              </button>
-            </div>
           </div>
         )}
       </div>
