@@ -14,13 +14,11 @@ const Footer = () => {
               <span>AppleVerse 2.0</span>
             </div>
             <p className="brand-description">
-              Your comprehensive guide to apple varieties, connecting farmers, 
-              researchers, and enthusiasts with the world of apples.
+              Your interactive platform to explore, manage, and track apple varieties worldwide with bulk uploads and an organized library.
             </p>
             <div className="social-links">
-              <a href="#" className="social-link">Twitter</a>
-              <a href="#" className="social-link">LinkedIn</a>
-              <a href="#" className="social-link">GitHub</a>
+              <a href="https://x.com/AAFC_Canada?s=09" target="_blank" rel="noopener noreferrer" className="social-link">Twitter</a>
+              <a href="https://www.linkedin.com/company/aafc-aac/posts/?feedView=all" target="_blank" rel="noopener noreferrer" className="social-link">LinkedIn</a>
             </div>
           </div>
         </div>
@@ -29,11 +27,10 @@ const Footer = () => {
         <div className="footer-section">
           <h3>Quick Links</h3>
           <ul className="footer-links">
-            <li><a href="/search">Search Apples</a></li>
-            <li><a href="/varieties">All Varieties</a></li>
-            <li><a href="/image-search">Image Search</a></li>
-            <li><a href="/export">Export Data</a></li>
-            <li><a href="/about">About Project</a></li>
+            <li><a href="/library">Search Apples</a></li>
+            <li><a href="/library">All Varieties</a></li>
+            <li><a href="/library">Export Data</a></li>
+            <li><a href="/about">About Page</a></li>
           </ul>
         </div>
 
@@ -47,17 +44,10 @@ const Footer = () => {
               </a>
             </li>
             <li>
-              <a href="https://www.ontarioapplegrowers.ca" target="_blank" rel="noopener noreferrer">
-                Ontario Apple Growers <ExternalLink size={14} />
+              <a href="https://docs.google.com/document/d/1at6Y0BkwUhH0Mk2pLhK5okrpyaP3VoLgzigisBrTWjA/edit?usp=sharing" target="_blank" rel="noopener noreferrer">
+                Documentation <ExternalLink size={14} />
               </a>
             </li>
-            <li>
-              <a href="https://nationalfruitcollection.org.uk" target="_blank" rel="noopener noreferrer">
-                National Fruit Collection <ExternalLink size={14} />
-              </a>
-            </li>
-            <li><a href="/research">Research Papers</a></li>
-            <li><a href="/api">API Documentation</a></li>
           </ul>
         </div>
 
@@ -78,27 +68,14 @@ const Footer = () => {
               <span>Ontario, Canada</span>
             </div>
           </div>
-          
-          <div className="newsletter">
-            <h4>Stay Updated</h4>
-            <div className="newsletter-form">
-              <input 
-                type="email" 
-                placeholder="Enter your email" 
-                className="newsletter-input"
-              />
-              <button className="newsletter-btn">Subscribe</button>
-            </div>
-          </div>
         </div>
-
       </div>
 
       {/* Bottom Bar */}
       <div className="footer-bottom">
         <div className="footer-bottom-content">
           <div className="copyright">
-            &copy; 2024 AppleVerse 2.0. All rights reserved.
+            &copy; 2025 AppleVerse 2.0. All rights reserved.
           </div>
           <div className="footer-bottom-links">
             <a href="/privacy">Privacy Policy</a>

@@ -68,7 +68,7 @@ const Contact = () => {
     <div className="contact-page">
       {/* Hero Section */}
       <section className="hero-section">
-        <div className="hero-content">
+        <div className="hero-content" style={{ textAlign: 'center', alignItems: 'center' }}>
           <span className="hero-badge">Contact Us</span>
           <h1 className="hero-title">Let's Start a Conversation</h1>
           <p className="hero-subtitle">

@@ -1,29 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { 
-  ArrowLeft, 
-  Save, 
-  X, 
-  Image as ImageIcon, 
-  Plus, 
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  Info,
-  CheckCircle2,
-  AlertCircle
-} from 'lucide-react';
+import { ArrowLeft, Save, X, Image as ImageIcon, Plus, Trash2, ChevronDown, ChevronUp, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import './SingleApple.css';
 
 export default function SingleApple() {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-  
+
   // Mandatory fields
   const [accession, setAccession] = useState('');
   const [cultivarName, setCultivarName] = useState('');
-  
+
   // Template fields
   const [appleData, setAppleData] = useState({
     // Core Identification
@@ -31,13 +19,11 @@ export default function SingleApple() {
     prefix_acp: '',
     acno: '',
     label_name: '',
-    
     // Taxonomic Information
     family: 'Rosaceae',
     genus: 'Malus',
     species: 'domestica',
     taxon: '',
-    
     // Origin and Location
     country: '',
     province_state: '',
@@ -46,19 +32,16 @@ export default function SingleApple() {
     location_section_2: '',
     location_section_3: '',
     location_section_4: '',
-    
     // People and Organizations
     breeder_or_collector: '',
     cooperator: '',
     cooperator_new: '',
-    
     // Plant Classification
     inventory_type: '',
     inventory_maintenance_policy: '',
     plant_type: 'apple',
     life_form: '',
     is_distributable: '',
-    
     // Fruit Characteristics
     fruitshape_115057: '',
     fruitlgth_115156: '',
@@ -68,7 +51,6 @@ export default function SingleApple() {
     frttexture_115123: '',
     frtstmlgth_115158: '',
     frtflshoxi_115129: '',
-    
     // Seed Characteristics
     seedcolor_115086: '',
     ssize_quantity_of_seed: '',
@@ -76,22 +58,18 @@ export default function SingleApple() {
     seedwidth_115164: '',
     seednumber_115087: '',
     seedshape_115167: '',
-    
     // Phenology
     first_bloom_date: '',
     full_bloom_date: '',
-    
     // Visual and Quality Traits
     colour: '',
     density: '',
     fireblight_rating: '',
-    
     // Descriptive Information
     cmt: '',
     narativekeyword: '',
     full_narative: '',
     pedigree_description: '',
-    
     // Status and Release Information
     availability_status: '',
     ipr_type: '',
@@ -137,9 +115,9 @@ export default function SingleApple() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setAppleData(prevData => ({ 
-      ...prevData, 
-      [name]: value 
+    setAppleData(prevData => ({
+      ...prevData,
+      [name]: value
     }));
   };
 
@@ -163,7 +141,6 @@ export default function SingleApple() {
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
-    
     if ((images.length + files.length) > 10) {
       setError('Maximum 10 images allowed');
       e.target.value = '';
@@ -195,12 +172,9 @@ export default function SingleApple() {
   const removeImage = (index) => {
     const newImages = images.filter((_, i) => i !== index);
     const newPreviews = imagePreviews.filter((_, i) => i !== index);
-    
     URL.revokeObjectURL(imagePreviews[index]);
-    
     setImages(newImages);
     setImagePreviews(newPreviews);
-    
     if (newImages.length === 0 && fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -208,11 +182,12 @@ export default function SingleApple() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!accession.trim()) {
       setError('❌ Accession is required');
       return;
     }
+
     if (!cultivarName.trim()) {
       setError('❌ Cultivar Name is required');
       return;
@@ -223,7 +198,7 @@ export default function SingleApple() {
     setSuccess('');
 
     const formData = new FormData();
-    
+
     // Combine all data
     const submitData = {
       accession: accession.trim(),
@@ -235,7 +210,7 @@ export default function SingleApple() {
     const validCustomFields = customFields.filter(
       cf => cf.fieldName.trim() && cf.fieldValue.trim()
     );
-    
+
     if (validCustomFields.length > 0) {
       const customFieldsObj = {};
       validCustomFields.forEach(cf => {
@@ -245,7 +220,6 @@ export default function SingleApple() {
     }
 
     formData.append('appleData', JSON.stringify(submitData));
-    
     images.forEach(image => {
       formData.append('images', image);
     });
@@ -255,21 +229,18 @@ export default function SingleApple() {
       const adminToken = localStorage.getItem('adminToken');
       
       if (!adminToken) {
-        setError('You must be logged in as admin to create apples.');
-        setLoading(false);
-        navigate('/signup-login');
-      const adminToken = localStorage.getItem('adminToken');
-      if (!adminToken) {
         setError('❌ You must be logged in as admin to upload apples.');
+        setLoading(false);
         setTimeout(() => navigate('/signup-login'), 2000);
         return;
       }
 
+      // Make the API call
       const response = await axios.post('http://localhost:5000/api/apples/single-upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${adminToken}`
-        },
+        }
       });
 
       setSuccess(`✅ Successfully created ${response.data.apple.cultivar_name}!`);
@@ -283,6 +254,7 @@ export default function SingleApple() {
       const errorMessage = err.response?.data?.message || 'Failed to create apple.';
       setError(`❌ ${errorMessage}`);
       console.error('Single upload error:', err);
+      
     } finally {
       setLoading(false);
     }
@@ -307,77 +279,70 @@ export default function SingleApple() {
   };
 
   return (
-    <div className="single-apple-page-pro">
-      <div className="single-apple-container-pro">
-        
+    <div className="single-apple-container-pro">
+      <div className="single-apple-wrapper-pro">
         {/* Header */}
         <div className="header-pro">
-          <button 
-            className="back-btn-pro"
+          <button
             onClick={() => navigate('/create-apple')}
             type="button"
+            className="back-btn-pro"
           >
-            <ArrowLeft size={20} />
-            <span>Back</span>
+            <ArrowLeft size={20} /> Back
           </button>
-          
           <div className="header-content-pro">
-            <h1 className="title-pro">🍎 Create New Apple Variety</h1>
-            <p className="subtitle-pro">Complete the form below using the standardized template</p>
-          </div>
-        </div>
-
-        {/* Alert Messages */}
-        {error && (
-          <div className="alert-pro alert-error-pro">
-            <AlertCircle size={20} />
-            <span>{error}</span>
-            <button onClick={() => setError('')} className="alert-close-pro">
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {success && (
-          <div className="alert-pro alert-success-pro">
-            <CheckCircle2 size={20} />
-            <span>{success}</span>
-          </div>
-        )}
-
-        {/* Progress Indicator */}
-        <div className="progress-indicator-pro">
-          <div className="progress-step-pro">
-            <div className={`progress-circle-pro ${accession && cultivarName ? 'completed' : 'active'}`}>
-              {accession && cultivarName ? <CheckCircle2 size={16} /> : '1'}
-            </div>
-            <span className="progress-label-pro">Required Info</span>
-          </div>
-          <div className="progress-line-pro"></div>
-          <div className="progress-step-pro">
-            <div className={`progress-circle-pro ${Object.values(appleData).some(v => v) ? 'active' : ''}`}>2</div>
-            <span className="progress-label-pro">Details</span>
-          </div>
-          <div className="progress-line-pro"></div>
-          <div className="progress-step-pro">
-            <div className={`progress-circle-pro ${images.length > 0 ? 'active' : ''}`}>3</div>
-            <span className="progress-label-pro">Images</span>
+            <h1 className="main-title-pro">🍎 Create New Apple Variety</h1>
+            <p className="subtitle-pro">
+              Complete the form below using the standardized template
+            </p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="form-pro">
-          
+          {/* Alert Messages */}
+          {error && (
+            <div className="alert-pro alert-error-pro">
+              {error}
+              <button
+                type="button"
+                onClick={() => setError('')}
+                className="alert-close-pro"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          )}
+
+          {success && (
+            <div className="alert-pro alert-success-pro">
+              {success}
+            </div>
+          )}
+
+          {/* Progress Indicator */}
+          <div className="progress-indicator-pro">
+            <div className={`progress-step-pro ${accession && cultivarName ? 'active' : ''}`}>
+              {accession && cultivarName ? <CheckCircle2 size={24} /> : '1'}
+              Required Info
+            </div>
+            <div className={`progress-step-pro ${Object.values(appleData).some(v => v) ? 'active' : ''}`}>
+              2
+              Details
+            </div>
+            <div className={`progress-step-pro ${images.length > 0 ? 'active' : ''}`}>
+              3
+              Images
+            </div>
+          </div>
+
           {/* MANDATORY SECTION */}
-          <div className="section-card-pro mandatory-card-pro">
-            <div 
+          <div className="section-card-pro">
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('mandatory')}
             >
               <div className="section-title-wrapper-pro">
-                <h2 className="section-title-pro">
-                  <span className="required-badge-pro">REQUIRED</span>
-                  Mandatory Fields
-                </h2>
+                <h2 className="section-title-pro">🔴 REQUIRED Mandatory Fields</h2>
                 <button
                   type="button"
                   className="info-btn-pro"
@@ -391,14 +356,12 @@ export default function SingleApple() {
               </div>
               {expandedSections.mandatory ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.mandatory && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
-                  <div className="form-group-pro mandatory-field-pro">
-                    <label className="label-pro">
-                      Accession <span className="required-star-pro">*</span>
-                    </label>
+                  <div className="form-group-pro">
+                    <label className="label-pro">Accession *</label>
                     <input
                       type="text"
                       value={accession}
@@ -407,13 +370,11 @@ export default function SingleApple() {
                       placeholder="e.g., MAL0100"
                       required
                     />
-                    <small className="help-text-pro">Unique identifier for this apple variety</small>
+                    <small>Unique identifier for this apple variety</small>
                   </div>
 
-                  <div className="form-group-pro mandatory-field-pro">
-                    <label className="label-pro">
-                      Cultivar Name <span className="required-star-pro">*</span>
-                    </label>
+                  <div className="form-group-pro">
+                    <label className="label-pro">Cultivar Name *</label>
                     <input
                       type="text"
                       value={cultivarName}
@@ -422,7 +383,7 @@ export default function SingleApple() {
                       placeholder="e.g., Honeycrisp"
                       required
                     />
-                    <small className="help-text-pro">Common name of the apple variety</small>
+                    <small>Common name of the apple variety</small>
                   </div>
                 </div>
               </div>
@@ -431,7 +392,7 @@ export default function SingleApple() {
 
           {/* CORE IDENTIFICATION */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('identification')}
             >
@@ -450,7 +411,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.identification ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.identification && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -462,10 +423,9 @@ export default function SingleApple() {
                       value={appleData.site_id}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Site identifier"
+                      placeholder="Site ID"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Prefix (ACP)</label>
                     <input
@@ -474,10 +434,9 @@ export default function SingleApple() {
                       value={appleData.prefix_acp}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Accession prefix code"
+                      placeholder="Prefix"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">ACNO</label>
                     <input
@@ -486,10 +445,9 @@ export default function SingleApple() {
                       value={appleData.acno}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Accession number"
+                      placeholder="ACNO"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Label Name</label>
                     <input
@@ -498,7 +456,7 @@ export default function SingleApple() {
                       value={appleData.label_name}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Display label name"
+                      placeholder="Label name"
                     />
                   </div>
                 </div>
@@ -508,7 +466,7 @@ export default function SingleApple() {
 
           {/* TAXONOMIC INFORMATION */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('taxonomic')}
             >
@@ -527,7 +485,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.taxonomic ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.taxonomic && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -539,10 +497,9 @@ export default function SingleApple() {
                       value={appleData.family}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Rosaceae"
+                      placeholder="Rosaceae"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Genus</label>
                     <input
@@ -551,10 +508,9 @@ export default function SingleApple() {
                       value={appleData.genus}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Malus"
+                      placeholder="Malus"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Species</label>
                     <input
@@ -563,10 +519,9 @@ export default function SingleApple() {
                       value={appleData.species}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., domestica"
+                      placeholder="domestica"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Taxon</label>
                     <input
@@ -575,7 +530,7 @@ export default function SingleApple() {
                       value={appleData.taxon}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Full taxonomic name"
+                      placeholder="Taxon"
                     />
                   </div>
                 </div>
@@ -585,7 +540,7 @@ export default function SingleApple() {
 
           {/* ORIGIN AND LOCATION */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('location')}
             >
@@ -604,7 +559,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.location ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.location && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -616,10 +571,9 @@ export default function SingleApple() {
                       value={appleData.country}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Country of origin"
+                      placeholder="Country"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Province/State</label>
                     <input
@@ -628,10 +582,9 @@ export default function SingleApple() {
                       value={appleData.province_state}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Province or state"
+                      placeholder="Province or State"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Habitat</label>
                     <input
@@ -640,10 +593,9 @@ export default function SingleApple() {
                       value={appleData.habitat}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Natural habitat"
+                      placeholder="Habitat"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Location Section 1</label>
                     <input
@@ -652,10 +604,9 @@ export default function SingleApple() {
                       value={appleData.location_section_1}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Location detail 1"
+                      placeholder="Location section 1"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Location Section 2</label>
                     <input
@@ -664,10 +615,9 @@ export default function SingleApple() {
                       value={appleData.location_section_2}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Location detail 2"
+                      placeholder="Location section 2"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Location Section 3</label>
                     <input
@@ -676,10 +626,9 @@ export default function SingleApple() {
                       value={appleData.location_section_3}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Location detail 3"
+                      placeholder="Location section 3"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Location Section 4</label>
                     <input
@@ -688,7 +637,7 @@ export default function SingleApple() {
                       value={appleData.location_section_4}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Location detail 4"
+                      placeholder="Location section 4"
                     />
                   </div>
                 </div>
@@ -698,7 +647,7 @@ export default function SingleApple() {
 
           {/* PEOPLE AND ORGANIZATIONS */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('people')}
             >
@@ -717,7 +666,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.people ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.people && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -729,10 +678,9 @@ export default function SingleApple() {
                       value={appleData.breeder_or_collector}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Name of breeder or collector"
+                      placeholder="Name or organization"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Cooperator</label>
                     <input
@@ -741,10 +689,9 @@ export default function SingleApple() {
                       value={appleData.cooperator}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Cooperating organization"
+                      placeholder="Cooperator name"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Cooperator (New)</label>
                     <input
@@ -753,7 +700,7 @@ export default function SingleApple() {
                       value={appleData.cooperator_new}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Updated cooperator info"
+                      placeholder="New cooperator"
                     />
                   </div>
                 </div>
@@ -763,7 +710,7 @@ export default function SingleApple() {
 
           {/* PLANT CLASSIFICATION */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('classification')}
             >
@@ -782,7 +729,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.classification ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.classification && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -794,10 +741,9 @@ export default function SingleApple() {
                       value={appleData.inventory_type}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Type of inventory"
+                      placeholder="Inventory type"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Inventory Maintenance Policy</label>
                     <input
@@ -809,7 +755,6 @@ export default function SingleApple() {
                       placeholder="Maintenance policy"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Plant Type</label>
                     <input
@@ -818,10 +763,9 @@ export default function SingleApple() {
                       value={appleData.plant_type}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Type of plant"
+                      placeholder="apple"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Life Form</label>
                     <input
@@ -830,10 +774,9 @@ export default function SingleApple() {
                       value={appleData.life_form}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Plant life form"
+                      placeholder="Life form"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Is Distributable?</label>
                     <select
@@ -854,7 +797,7 @@ export default function SingleApple() {
 
           {/* FRUIT CHARACTERISTICS */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('fruit')}
             >
@@ -873,7 +816,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.fruit ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.fruit && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -885,10 +828,9 @@ export default function SingleApple() {
                       value={appleData.fruitshape_115057}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Round, Oblong"
+                      placeholder="Shape description"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Length (115156)</label>
                     <input
@@ -897,10 +839,9 @@ export default function SingleApple() {
                       value={appleData.fruitlgth_115156}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Length in mm"
+                      placeholder="Length (mm)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Width (115157)</label>
                     <input
@@ -909,10 +850,9 @@ export default function SingleApple() {
                       value={appleData.fruitwidth_115157}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Width in mm"
+                      placeholder="Width (mm)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Weight (115121)</label>
                     <input
@@ -921,10 +861,9 @@ export default function SingleApple() {
                       value={appleData.frtweight_115121}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Weight in grams"
+                      placeholder="Weight (g)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Stem Thickness (115127)</label>
                     <input
@@ -933,10 +872,9 @@ export default function SingleApple() {
                       value={appleData.frtstemthk_115127}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Thickness measurement"
+                      placeholder="Stem thickness"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Texture (115123)</label>
                     <input
@@ -945,10 +883,9 @@ export default function SingleApple() {
                       value={appleData.frttexture_115123}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Crisp, Soft"
+                      placeholder="Texture description"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Stem Length (115158)</label>
                     <input
@@ -957,10 +894,9 @@ export default function SingleApple() {
                       value={appleData.frtstmlgth_115158}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Stem length"
+                      placeholder="Stem length (mm)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fruit Flesh Oxidation (115129)</label>
                     <input
@@ -969,7 +905,7 @@ export default function SingleApple() {
                       value={appleData.frtflshoxi_115129}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Oxidation rate"
+                      placeholder="Oxidation level"
                     />
                   </div>
                 </div>
@@ -979,7 +915,7 @@ export default function SingleApple() {
 
           {/* SEED CHARACTERISTICS */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('seed')}
             >
@@ -998,7 +934,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.seed ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.seed && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -1010,10 +946,9 @@ export default function SingleApple() {
                       value={appleData.seedcolor_115086}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Brown, Black"
+                      placeholder="Seed color"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Seed Size / Quantity</label>
                     <input
@@ -1022,10 +957,9 @@ export default function SingleApple() {
                       value={appleData.ssize_quantity_of_seed}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Size or quantity"
+                      placeholder="Size and quantity"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Seed Length (115163)</label>
                     <input
@@ -1034,10 +968,9 @@ export default function SingleApple() {
                       value={appleData.seedlength_115163}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Length in mm"
+                      placeholder="Length (mm)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Seed Width (115164)</label>
                     <input
@@ -1046,10 +979,9 @@ export default function SingleApple() {
                       value={appleData.seedwidth_115164}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Width in mm"
+                      placeholder="Width (mm)"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Seed Number (115087)</label>
                     <input
@@ -1061,7 +993,6 @@ export default function SingleApple() {
                       placeholder="Number of seeds"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Seed Shape (115167)</label>
                     <input
@@ -1080,7 +1011,7 @@ export default function SingleApple() {
 
           {/* PHENOLOGY */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('phenology')}
             >
@@ -1099,7 +1030,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.phenology ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.phenology && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -1111,10 +1042,9 @@ export default function SingleApple() {
                       value={appleData.first_bloom_date}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., April 15"
+                      placeholder="Date or month"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Full Bloom Date</label>
                     <input
@@ -1123,7 +1053,7 @@ export default function SingleApple() {
                       value={appleData.full_bloom_date}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., April 20"
+                      placeholder="Date or month"
                     />
                   </div>
                 </div>
@@ -1133,7 +1063,7 @@ export default function SingleApple() {
 
           {/* VISUAL AND QUALITY TRAITS */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('quality')}
             >
@@ -1152,7 +1082,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.quality ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.quality && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -1164,10 +1094,9 @@ export default function SingleApple() {
                       value={appleData.colour}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="e.g., Red, Green, Yellow"
+                      placeholder="Color description"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Density</label>
                     <input
@@ -1176,10 +1105,9 @@ export default function SingleApple() {
                       value={appleData.density}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Density measurement"
+                      placeholder="Density level"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Fireblight Rating</label>
                     <input
@@ -1188,7 +1116,7 @@ export default function SingleApple() {
                       value={appleData.fireblight_rating}
                       onChange={handleChange}
                       className="input-pro"
-                      placeholder="Resistance rating (1-5)"
+                      placeholder="Rating or description"
                     />
                   </div>
                 </div>
@@ -1198,7 +1126,7 @@ export default function SingleApple() {
 
           {/* DESCRIPTIVE INFORMATION */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('descriptive')}
             >
@@ -1217,10 +1145,10 @@ export default function SingleApple() {
               </div>
               {expandedSections.descriptive ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.descriptive && (
               <div className="section-content-pro">
-                <div className="form-grid-pro form-grid-full-pro">
+                <div className="form-grid-pro">
                   <div className="form-group-pro">
                     <label className="label-pro">Comments (CMT)</label>
                     <textarea
@@ -1229,10 +1157,9 @@ export default function SingleApple() {
                       onChange={handleChange}
                       className="input-pro textarea-pro"
                       rows="3"
-                      placeholder="General comments about this variety"
+                      placeholder="Any additional comments"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Narrative Keyword</label>
                     <input
@@ -1244,7 +1171,6 @@ export default function SingleApple() {
                       placeholder="Keywords for narrative"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Full Narrative</label>
                     <textarea
@@ -1256,7 +1182,6 @@ export default function SingleApple() {
                       placeholder="Complete narrative description"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Pedigree Description</label>
                     <textarea
@@ -1275,7 +1200,7 @@ export default function SingleApple() {
 
           {/* STATUS AND RELEASE */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('status')}
             >
@@ -1294,7 +1219,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.status ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.status && (
               <div className="section-content-pro">
                 <div className="form-grid-pro">
@@ -1309,7 +1234,6 @@ export default function SingleApple() {
                       placeholder="e.g., Available, Limited"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">IPR Type</label>
                     <input
@@ -1321,7 +1245,6 @@ export default function SingleApple() {
                       placeholder="Intellectual property rights"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Level of Improvement</label>
                     <input
@@ -1333,7 +1256,6 @@ export default function SingleApple() {
                       placeholder="Improvement level"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Released Date</label>
                     <input
@@ -1345,7 +1267,6 @@ export default function SingleApple() {
                       placeholder="e.g., 2020"
                     />
                   </div>
-
                   <div className="form-group-pro">
                     <label className="label-pro">Released Date Format</label>
                     <input
@@ -1364,7 +1285,7 @@ export default function SingleApple() {
 
           {/* CUSTOM FIELDS */}
           <div className="section-card-pro custom-section-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('custom')}
             >
@@ -1390,13 +1311,12 @@ export default function SingleApple() {
                   }}
                   className="add-btn-pro"
                 >
-                  <Plus size={16} />
-                  Add Field
+                  <Plus size={16} /> Add Field
                 </button>
                 {expandedSections.custom ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
               </div>
             </div>
-            
+
             {expandedSections.custom && (
               <div className="section-content-pro">
                 <p className="section-description-pro">
@@ -1408,14 +1328,18 @@ export default function SingleApple() {
                       type="text"
                       placeholder="Field Name (e.g., 'Taste Profile')"
                       value={field.fieldName}
-                      onChange={(e) => handleCustomFieldChange(index, 'fieldName', e.target.value)}
+                      onChange={(e) =>
+                        handleCustomFieldChange(index, 'fieldName', e.target.value)
+                      }
                       className="input-pro custom-name-pro"
                     />
                     <input
                       type="text"
                       placeholder="Field Value (e.g., 'Sweet and crisp')"
                       value={field.fieldValue}
-                      onChange={(e) => handleCustomFieldChange(index, 'fieldValue', e.target.value)}
+                      onChange={(e) =>
+                        handleCustomFieldChange(index, 'fieldValue', e.target.value)
+                      }
                       className="input-pro custom-value-pro"
                     />
                     {customFields.length > 1 && (
@@ -1435,7 +1359,7 @@ export default function SingleApple() {
 
           {/* IMAGES */}
           <div className="section-card-pro">
-            <div 
+            <div
               className="section-header-pro"
               onClick={() => toggleSection('images')}
             >
@@ -1454,7 +1378,7 @@ export default function SingleApple() {
               </div>
               {expandedSections.images ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
             </div>
-            
+
             {expandedSections.images && (
               <div className="section-content-pro">
                 <div className="upload-area-pro">
@@ -1468,12 +1392,19 @@ export default function SingleApple() {
                     className="upload-input-pro"
                     disabled={!accession}
                   />
-                  <label htmlFor="images" className={`upload-label-pro ${!accession ? 'disabled' : ''}`}>
+                  <label
+                    htmlFor="images"
+                    className={`upload-label-pro ${!accession ? 'disabled' : ''}`}
+                  >
                     <ImageIcon size={32} />
                     <span className="upload-text-pro">
-                      {accession ? 'Click to upload images or drag and drop' : 'Enter Accession first to enable upload'}
+                      {accession
+                        ? 'Click to upload images or drag and drop'
+                        : 'Enter Accession first to enable upload'}
                     </span>
-                    <span className="upload-hint-pro">PNG, JPG, WEBP up to 10MB (Max 10 files)</span>
+                    <span className="upload-hint-pro">
+                      PNG, JPG, WEBP up to 10MB (Max 10 files)
+                    </span>
                   </label>
                 </div>
 
@@ -1481,7 +1412,11 @@ export default function SingleApple() {
                   <div className="images-grid-pro">
                     {imagePreviews.map((preview, index) => (
                       <div key={index} className="image-card-pro">
-                        <img src={preview} alt={`Preview ${index + 1}`} className="preview-img-pro" />
+                        <img
+                          src={preview}
+                          alt={`Preview ${index + 1}`}
+                          className="preview-img-pro"
+                        />
                         <button
                           type="button"
                           onClick={() => removeImage(index)}
@@ -1500,11 +1435,7 @@ export default function SingleApple() {
 
           {/* SUBMIT BUTTON */}
           <div className="submit-section-pro">
-            <button
-              type="submit"
-              className="submit-btn-pro"
-              disabled={loading}
-            >
+            <button type="submit" className="submit-btn-pro" disabled={loading}>
               {loading ? (
                 <>
                   <div className="spinner-pro"></div>
@@ -1518,7 +1449,6 @@ export default function SingleApple() {
               )}
             </button>
           </div>
-
         </form>
       </div>
     </div>

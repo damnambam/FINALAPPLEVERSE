@@ -463,17 +463,27 @@ export default function LibraryV2() {
     }
     
     // Try common field name mappings (Excel -> Database)
+    // UPDATED: Include space-separated versions that match actual database fields
     const fieldMappings = {
       'CULTIVAR NAME': ['cultivar_name', 'CULTIVAR NAME', 'cultivar', 'name'],
       'ACNO': ['acno', 'ACNO', 'AC_NO'],
       'ACCESSION': ['accession', 'ACCESSION'],
-      'COUNTRY': ['e_origin_country', 'E Origin Country', 'E_ORIGIN_COUNTRY', 'COUNTRY'],
-      'PROVINCE/STATE': ['e_origin_province', 'E Origin Province', 'E_ORIGIN_PROVINCE', 'PROVINCE/STATE'],
-      'GENUS': ['e_genus', 'E GENUS', 'E_GENUS', 'GENUS'],
-      'SPECIES': ['e_species', 'E SPECIES', 'E_SPECIES', 'SPECIES'],
-      'PEDIGREE DESCRIPTION': ['e_pedigree', 'E pedigree', 'E_PEDIGREE', 'PEDIGREE DESCRIPTION'],
-      'BREEDER OR COLLECTOR': ['e_breeder', 'E Breeder', 'E_BREEDER', 'BREEDER OR COLLECTOR', 'e_collector', 'E Collector'],
-      'LABEL NAME': ['cultivar_name', 'CULTIVAR NAME', 'LABEL NAME', 'name']
+      'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country', 'E_ORIGIN_COUNTRY', 'COUNTRY'],
+      'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province', 'E_ORIGIN_PROVINCE', 'PROVINCE/STATE'],
+      'GENUS': ['e genus', 'e_genus', 'E GENUS', 'E_GENUS', 'GENUS'],
+      'SPECIES': ['e species', 'e_species', 'E SPECIES', 'E_SPECIES', 'SPECIES'],
+      'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'E_PEDIGREE', 'PEDIGREE DESCRIPTION'],
+      'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'E_BREEDER', 'BREEDER OR COLLECTOR', 'e collector', 'e_collector', 'E Collector'],
+      'LABEL NAME': ['cultivar_name', 'CULTIVAR NAME', 'LABEL NAME', 'label name', 'name'],
+      'HABITAT': ['e habitat', 'e_habitat', 'habitat', 'HABITAT'],
+      'FAMILY': ['family', 'FAMILY'],
+      'TAXON': ['taxon', 'taxno', 'TAXON'],
+      'SITE ID': ['site id', 'site_id', 'site', 'SITE ID'],
+      'PREFIX (ACP)': ['acp', 'prefix acp', 'acp (accession prefix)', 'PREFIX (ACP)'],
+      'AVAILABILITY STATUS ': ['status', 'distribute', 'availability status', 'AVAILABILITY STATUS ', 'AVAILABILITY STATUS'],
+      'LIFE FORM': ['plant type', 'plant_type', 'LIFE FORM', 'life_form'],
+      'INVENTORY TYPE': ['ivt', 'ivt (inventory type)', 'inventory type', 'inventory_type', 'INVENTORY TYPE'],
+      'PLANT TYPE': ['plant type', 'plant_type', 'PLANT TYPE']
     };
     
     if (fieldMappings[excelCol]) {
@@ -699,6 +709,7 @@ export default function LibraryV2() {
   }, []);
 
   // Handle side effects when query changes - moved from onChange for performance
+  // FIXED: Removed 'apples' from dependency array to prevent infinite loop
   useEffect(() => {
     // Reset active index when query changes
     setActiveIndex(-1);
@@ -725,7 +736,7 @@ export default function LibraryV2() {
     }
     const shouldShow = Boolean(query.trim() && suggestions.length > 0);
     setShowSuggest(shouldShow);
-  }, [query, suggestions, apples]);
+  }, [query, suggestions]); // FIXED: Removed 'apples' - was causing infinite loop
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -1920,13 +1931,13 @@ function getFieldValueForExport(record, excelColumnName) {
     'CULTIVAR NAME': ['cultivar_name', 'CULTIVAR NAME'],
     'ACNO': ['acno', 'ACNO'],
     'ACCESSION': ['accession', 'ACCESSION'],
-    'GENUS': ['e_genus', 'E GENUS', 'GENUS'],
-    'SPECIES': ['e_species', 'E SPECIES', 'SPECIES'],
-    'COUNTRY': ['e_origin_country', 'E Origin Country', 'COUNTRY'],
-    'PROVINCE/STATE': ['e_origin_province', 'E Origin Province', 'PROVINCE/STATE'],
-    'PEDIGREE DESCRIPTION': ['e_pedigree', 'E pedigree', 'PEDIGREE DESCRIPTION'],
-    'BREEDER OR COLLECTOR': ['e_breeder', 'E Breeder', 'e_collector', 'E Collector', 'BREEDER OR COLLECTOR'],
-    'LABEL NAME': ['cultivar_name', 'CULTIVAR NAME', 'LABEL NAME']
+    'GENUS': ['e genus', 'e_genus', 'E GENUS', 'GENUS'],
+    'SPECIES': ['e species', 'e_species', 'E SPECIES', 'SPECIES'],
+    'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country', 'COUNTRY'],
+    'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province', 'PROVINCE/STATE'],
+    'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'PEDIGREE DESCRIPTION'],
+    'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'e collector', 'e_collector', 'E Collector', 'BREEDER OR COLLECTOR'],
+    'LABEL NAME': ['cultivar_name', 'CULTIVAR NAME', 'LABEL NAME', 'label name']
   };
   
   if (fieldMappings[excelColumnName]) {
@@ -2562,13 +2573,13 @@ async function exportPDF(rows, selectedIds = null, apiBase, setErrorMessage = nu
             'CULTIVAR NAME': ['cultivar_name', 'name', 'cultivar'],
             'ACNO': ['acno'],
             'ACCESSION': ['accession'],
-            'COUNTRY': ['e origin country', 'E Origin Country', 'e_origin_country'],
-            'PROVINCE/STATE': ['e origin province', 'E Origin Province', 'e_origin_province'],
-            'GENUS': ['e genus', 'E GENUS', 'e_genus'],
-            'SPECIES': ['e species', 'E SPECIES', 'e_species'],
-            'PEDIGREE DESCRIPTION': ['e pedigree', 'E pedigree', 'E Pedigree', 'e_pedigree'],
-            'BREEDER OR COLLECTOR': ['e_breeder', 'E Breeder', 'E_BREEDER', 'e_collector', 'E Collector'],
-            'TAXON': ['taxon']
+            'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country'],
+            'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province'],
+            'GENUS': ['e genus', 'e_genus', 'E GENUS'],
+            'SPECIES': ['e species', 'e_species', 'E SPECIES'],
+            'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'E Pedigree'],
+            'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'E_BREEDER', 'e collector', 'e_collector', 'E Collector'],
+            'TAXON': ['taxon', 'taxno']
           };
           
           if (fieldMappings[columnName]) {
@@ -2965,13 +2976,13 @@ async function exportPDFAll(rows, apiBase, setErrorMessage = null) {
           'CULTIVAR NAME': ['cultivar_name', 'name', 'cultivar'],
           'ACNO': ['acno'],
           'ACCESSION': ['accession'],
-          'COUNTRY': ['e origin country', 'E Origin Country', 'e_origin_country'],
-          'PROVINCE/STATE': ['e origin province', 'E Origin Province', 'e_origin_province'],
-          'GENUS': ['e genus', 'E GENUS', 'e_genus'],
-          'SPECIES': ['e species', 'E SPECIES', 'e_species'],
-          'PEDIGREE DESCRIPTION': ['e pedigree', 'E pedigree', 'E Pedigree', 'e_pedigree'],
-          'BREEDER OR COLLECTOR': ['e_breeder', 'E Breeder', 'E_BREEDER', 'e_collector', 'E Collector'],
-          'TAXON': ['taxon']
+          'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country'],
+          'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province'],
+          'GENUS': ['e genus', 'e_genus', 'E GENUS'],
+          'SPECIES': ['e species', 'e_species', 'E SPECIES'],
+          'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'E Pedigree'],
+          'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'E_BREEDER', 'e collector', 'e_collector', 'E Collector'],
+          'TAXON': ['taxon', 'taxno']
         };
         if (fieldMappings[columnName]) {
           value = getPDFFieldValue(row, fieldMappings[columnName]);

@@ -31,6 +31,9 @@
   overflow: hidden;
   color: white;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .hero-decoration {
@@ -88,6 +91,12 @@
   z-index: 1;
   max-width: 700px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
 }
 
 .hero-badge {
@@ -101,6 +110,7 @@
   text-transform: uppercase;
   margin-bottom: 24px;
   backdrop-filter: blur(10px);
+  text-align: center;
 }
 
 .hero-title {
@@ -109,6 +119,8 @@
   line-height: 1.2;
   margin-bottom: 20px;
   letter-spacing: -1px;
+  text-align: center;
+  width: 100%;
 }
 
 .hero-subtitle {
@@ -116,6 +128,8 @@
   line-height: 1.6;
   opacity: 0.95;
   font-weight: 400;
+  text-align: center;
+  width: 100%;
 }
 
 /* ===========================

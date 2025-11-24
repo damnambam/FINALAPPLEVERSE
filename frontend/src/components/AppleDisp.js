@@ -246,16 +246,11 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     const doc = new jsPDF();
     
     const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageHeight = doc.internal.pageSize.height;
     const margin = 20;
-    const leftWidth = pageWidth * 0.45;
-    const rightWidth = pageWidth * 0.45;
-    const rightStart = pageWidth * 0.52;
+    const lineHeight = 7;
     
     let yPosition = 20;
-    const lineHeight = 7;
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
     
     // Title
     doc.setFontSize(20);
@@ -273,7 +268,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     // Add a line
     doc.setDrawColor(231, 111, 81);
     doc.setLineWidth(0.5);
-    doc.line(margin, yPosition, leftWidth + margin, yPosition);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 10;
     
     // Helper function to add section
@@ -306,20 +301,15 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
         }
         const formattedKey = key.replace(/_/g, ' ').toUpperCase();
         const text = `${formattedKey}: ${value || 'N/A'}`;
-        const lines = doc.splitTextToSize(text, leftWidth);
-        lines.forEach(line => {
-          doc.text(line, margin + 5, yPosition);
-        yPosition += lineHeight;
-        const text = `${formattedKey}: ${value}`;
         
         // Handle long text with wrapping
-        const splitText = doc.splitTextToSize(text, pageWidth - 45);
+        const splitText = doc.splitTextToSize(text, pageWidth - 2 * margin - 10);
         splitText.forEach(line => {
           if (yPosition > pageHeight - 20) {
             doc.addPage();
             yPosition = 20;
           }
-          doc.text(line, 25, yPosition);
+          doc.text(line, margin + 5, yPosition);
           yPosition += lineHeight;
         });
       });
@@ -331,40 +321,84 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     addSection('IDENTITY & INVENTORY', {
       'Accession Number': apple.acno || apple.ACNO || '',
       'Accession': accession,
-      'Cultivar Name': apple.cultivar_name || apple.name || ''
+      'Cultivar Name': apple.cultivar_name || apple.name || '',
+      'Site ID': apple.site_id || '',
+      'Prefix (ACP)': apple.prefix_acp || '',
+      'Label Name': apple.label_name || ''
     });
     
-    addSection('GEOGRAPHY & ORIGIN', {
-      'Country': apple['e origin country'] || apple['E Origin Country'] || '',
-      'Province/State': apple['e origin province'] || apple['E Origin Province'] || '',
-      'City': apple['e origin city'] || apple['E Origin City'] || ''
+    addSection('TAXONOMY', {
+      'Family': apple.family || '',
+      'Genus': apple.genus || apple['e genus'] || '',
+      'Species': apple.species || apple['e species'] || '',
+      'Taxon': apple.taxon || '',
+      'Plant Type': apple.plant_type || '',
+      'Life Form': apple.life_form || ''
     });
 
-    addSection('BIOLOGY & TAXONOMY', {
-      'Genus': apple['e genus'] || apple['E Genus'] || '',
-      'Species': apple['e species'] || apple['E Species'] || '',
-      'Pedigree': apple['e pedigree'] || apple['E pedigree'] || ''
+    addSection('GEOGRAPHY & ORIGIN', {
+      'Country': apple.country || apple['e origin country'] || '',
+      'Province/State': apple.province_state || apple['e origin province'] || '',
+      'Habitat': apple.habitat || '',
+      'Location Section 1': apple.location_section_1 || '',
+      'Location Section 2': apple.location_section_2 || '',
+      'Location Section 3': apple.location_section_3 || '',
+      'Location Section 4': apple.location_section_4 || ''
     });
-    
-    addSection('ADDITIONAL INFORMATION', {
-      'Description': apple.description || '',
-      'Taste': apple.taste || '',
-      'Texture': apple.texture || '',
-      'Uses': apple.uses || '',
-      'Harvest Season': apple.harvestSeason || '',
-      'Hardiness': apple.hardiness || '',
-      'Storage': apple.storage || ''
+
+    addSection('PEOPLE & ORGANIZATIONS', {
+      'Breeder or Collector': apple.breeder_or_collector || apple['e breeder'] || '',
+      'Cooperator': apple.cooperator || '',
+      'Cooperator New': apple.cooperator_new || ''
     });
-    // Add all sections
-    Object.values(categoryData).forEach(category => {
-      const data = {};
-      category.fields.forEach(field => {
-        const value = apple[field.key];
-        if (value && value !== 'N/A' && value.toString().trim() !== '') {
-          data[field.label] = value;
-        }
-      });
-      addSection(category.title, data);
+
+    addSection('INVENTORY & CLASSIFICATION', {
+      'Inventory Type': apple.inventory_type || '',
+      'Inventory Maintenance Policy': apple.inventory_maintenance_policy || '',
+      'Is Distributable': apple.is_distributable || ''
+    });
+
+    addSection('FRUIT CHARACTERISTICS', {
+      'Fruit Shape': apple.fruitshape_115057 || '',
+      'Fruit Length': apple.fruitlgth_115156 || '',
+      'Fruit Width': apple.fruitwidth_115157 || '',
+      'Fruit Weight': apple.frtweight_115121 || '',
+      'Fruit Stem Thickness': apple.frtstemthk_115127 || '',
+      'Fruit Texture': apple.frttexture_115123 || '',
+      'Fruit Stem Length': apple.frtstmlgth_115158 || '',
+      'Fruit Flesh Oxidation': apple.frtflshoxi_115129 || '',
+      'Colour': apple.colour || '',
+      'Density': apple.density || ''
+    });
+
+    addSection('SEED CHARACTERISTICS', {
+      'Seed Color': apple.seedcolor_115086 || '',
+      'Seed Size / Quantity': apple.ssize_quantity_of_seed || '',
+      'Seed Length': apple.seedlength_115163 || '',
+      'Seed Width': apple.seedwidth_115164 || '',
+      'Seed Number': apple.seednumber_115087 || '',
+      'Seed Shape': apple.seedshape_115167 || ''
+    });
+
+    addSection('PHENOLOGY', {
+      'First Bloom Date': apple.first_bloom_date || '',
+      'Full Bloom Date': apple.full_bloom_date || '',
+      'Fireblight Rating': apple.fireblight_rating || ''
+    });
+
+    addSection('DESCRIPTIVE INFORMATION', {
+      'Comments': apple.cmt || '',
+      'Narrative Keyword': apple.narativekeyword || '',
+      'Full Narrative': apple.full_narative || '',
+      'Pedigree Description': apple.pedigree_description || ''
+    });
+
+    addSection('STATUS & RELEASE', {
+      'Availability Status': apple.availability_status || '',
+      'IPR Type': apple.ipr_type || '',
+      'Level of Improvement': apple.level_of_improvement || '',
+      'Released Date': apple.released_date || '',
+      'Released Date Format': apple.released_date_format || ''
     });
     
     // Add images section
@@ -374,7 +408,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
       
       doc.setFontSize(14);
       doc.setTextColor(44, 62, 80);
-      doc.text('Images', 20, yPosition);
+      doc.text('Images', margin, yPosition);
       yPosition += 15;
       
       for (let i = 0; i < images.length; i++) {
@@ -390,12 +424,12 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
             tempImg.onerror = () => resolve(); // Continue even if image fails
           });
           
-          const originalWidth = tempImg.width;
-          const originalHeight = tempImg.height;
+          const originalWidth = tempImg.width || 400;
+          const originalHeight = tempImg.height || 300;
           
           // Calculate dimensions to fit within page (max width: 170, maintain aspect ratio)
-          const maxWidth = pageWidth - 40; // Leave margins
-          const maxHeight = 200; // Maximum height for images
+          const maxWidth = pageWidth - 2 * margin;
+          const maxHeight = 150;
           
           let imgWidth = originalWidth;
           let imgHeight = originalHeight;
@@ -421,102 +455,17 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
           }
           
           // Add image
-          doc.addImage(img, 'JPEG', 20, yPosition, imgWidth, imgHeight);
+          doc.addImage(img, 'JPEG', margin, yPosition, imgWidth, imgHeight);
           yPosition += imgHeight + 10;
           
           // Add caption
           doc.setFontSize(10);
           doc.setTextColor(85, 85, 85);
-          doc.text(`Image ${i + 1}`, 20, yPosition);
+          doc.text(`Image ${i + 1}`, margin, yPosition);
           yPosition += 15;
         } catch (error) {
           console.error('Error adding image to PDF:', error);
         }
-      }
-    }
-    
-    // Add images section
-    let imageY = 30;
-    const imageSize = 45;
-    const imageSpacing = 8;
-    const imageWidth = rightWidth * (2 / 3);
-    const imageX = rightStart + rightWidth - imageWidth;
-    
-    if (images.length === 0) {
-      doc.setFontSize(12);
-      doc.setTextColor(150, 150, 150);
-      const noImagesText = 'No images';
-      const textWidth = doc.getTextWidth(noImagesText);
-      const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-      doc.text(noImagesText, centerX, imageY);
-    } else {
-      let imagesLoaded = 0;
-      for (let i = 0; i < Math.min(images.length, 4); i++) {
-        const imageUrl = images[i];
-        
-        try {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          
-          const imageLoaded = await new Promise((resolve) => {
-            img.onload = () => resolve(true);
-            img.onerror = () => resolve(false);
-            img.src = imageUrl;
-            setTimeout(() => resolve(false), 5000);
-          });
-          
-          if (imageLoaded && img.complete && img.naturalWidth > 0) {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-            let format = 'JPEG';
-            if (imageUrl.toLowerCase().endsWith('.png')) {
-              const pngDataUrl = canvas.toDataURL('image/png');
-              format = 'PNG';
-              doc.addImage(pngDataUrl, format, imageX, imageY, imageWidth, imageSize);
-            } else {
-              doc.addImage(dataUrl, format, imageX, imageY, imageWidth, imageSize);
-            }
-            
-            imagesLoaded++;
-            imageY += imageSize + imageSpacing;
-            
-            if (i < images.length - 1 && imageY + imageSize > pageHeight - margin) {
-              doc.addPage();
-              imageY = margin;
-            }
-          } else {
-            doc.setFontSize(10);
-            doc.setTextColor(150, 150, 150);
-            const unavailableText = 'Image unavailable';
-            const textWidth = doc.getTextWidth(unavailableText);
-            const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-            doc.text(unavailableText, centerX, imageY);
-            imageY += 15;
-          }
-        } catch (error) {
-          console.error(`Failed to load image ${imageUrl}:`, error);
-          doc.setFontSize(10);
-          doc.setTextColor(150, 150, 150);
-          const unavailableText = 'Image unavailable';
-          const textWidth = doc.getTextWidth(unavailableText);
-          const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-          doc.text(unavailableText, centerX, imageY);
-          imageY += 15;
-        }
-      }
-      
-      if (imagesLoaded === 0) {
-        doc.setFontSize(12);
-        doc.setTextColor(150, 150, 150);
-        const noImagesText = 'No images';
-        const textWidth = doc.getTextWidth(noImagesText);
-        const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-        doc.text(noImagesText, centerX, 30);
       }
     }
     
@@ -541,19 +490,19 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
       title: 'Taxonomy',
       fields: [
         { label: 'Family', key: 'family' },
-        { label: 'Genus', key: 'e genus' },
-        { label: 'Species', key: 'e species' },
+        { label: 'Genus', key: 'genus' },
+        { label: 'Species', key: 'species' },
         { label: 'Taxon', key: 'taxon' },
         { label: 'Plant Type', key: 'plant_type' },
         { label: 'Life Form', key: 'life_form' },
-        { label: 'Pedigree Description', key: 'e pedigree' }
+        { label: 'Pedigree Description', key: 'pedigree_description' }
       ]
     },
     geography: {
       title: 'Geography',
       fields: [
-        { label: 'Country', key: 'e origin country' },
-        { label: 'Province/State', key: 'e origin province' },
+        { label: 'Country', key: 'country' },
+        { label: 'Province/State', key: 'province_state' },
         { label: 'Habitat', key: 'habitat' },
         { label: 'Location Section 1', key: 'location_section_1' },
         { label: 'Location Section 2', key: 'location_section_2' },
@@ -564,7 +513,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
     people: {
       title: 'People',
       fields: [
-        { label: 'Breeder or Collector', key: 'e breeder' },
+        { label: 'Breeder or Collector', key: 'breeder_or_collector' },
         { label: 'Cooperator', key: 'cooperator' },
         { label: 'Cooperator New', key: 'cooperator_new' }
       ]
@@ -627,7 +576,7 @@ const AppleDisp = ({ appleData, onClose, isEditing: initialIsEditing = false, is
         { label: 'Comments', key: 'cmt', multiline: true },
         { label: 'Narrative Keyword', key: 'narativekeyword', multiline: true },
         { label: 'Full Narrative', key: 'full_narative', multiline: true },
-        { label: 'Images', key: 'images_field' }
+        { label: 'Pedigree Description', key: 'pedigree_description', multiline: true }
       ]
     }
   };
