@@ -113,7 +113,12 @@ app.use("/api/auth/settings", settingsRoutes);
 // ========================
 // STATIC FILES
 // ========================
-app.use("/images", express.static(path.join(__dirname, "images")));
+app.use('/images', express.static(path.join(__dirname, 'images'), {
+  setHeaders: (res, filePath) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+}));
 
 // ========================
 // 404 HANDLER

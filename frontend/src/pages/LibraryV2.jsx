@@ -1,55 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState, useDeferredValue, startTransition } from "react";
+import React, { useEffect, useMemo, useRef, useState, useDeferredValue } from "react";
 import FilterSidebar from "../components/FilterSidebar";
 import SearchBar from "../components/SearchBar";
-import { ChevronDown, Trash2, X } from "lucide-react";
+import { ChevronDown, Trash2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import "../styles/LibraryV2.css";
 
-// Component to handle image loading with fallbacks
+// OPTIMIZED: AppleImage component WITHOUT individual API calls
 const AppleImage = ({ imageUrl, accession, title, apiBase }) => {
   const [currentSrc, setCurrentSrc] = useState(null);
   const [errorCount, setErrorCount] = useState(0);
   const [showPlaceholder, setShowPlaceholder] = useState(false);
-  const [foundImage, setFoundImage] = useState(null);
   
-  // Fetch image from backend if not provided
-  useEffect(() => {
-    if (!imageUrl && accession) {
-      const fetchImage = async () => {
-        try {
-          const response = await fetch(`${apiBase}/api/apples/find-image/${encodeURIComponent(accession)}`);
-          const data = await response.json();
-          if (data.success && data.images && data.images.length > 0) {
-            // Use the first image from the API response
-            const firstImage = data.images[0];
-            // Properly encode the filename part
-            const pathParts = firstImage.split('/');
-            if (pathParts.length > 0) {
-              const filename = pathParts[pathParts.length - 1];
-              const encodedFilename = encodeURIComponent(filename);
-              pathParts[pathParts.length - 1] = encodedFilename;
-              setFoundImage(`${apiBase}${pathParts.join('/')}`);
-            } else {
-              setFoundImage(`${apiBase}${firstImage}`);
-            }
-          } else {
-            // API returned no images, mark as checked so we can try fallbacks
-            setFoundImage(null);
-          }
-        } catch (error) {
-          console.error('Error fetching image:', error);
-          // On error, allow fallbacks to be tried
-          setFoundImage(null);
-        }
-      };
-      fetchImage();
-    } else if (imageUrl) {
-      // If imageUrl is provided, don't try API or fallbacks
-      setFoundImage(null);
-    }
-  }, [imageUrl, accession, apiBase]);
-  
-  // Generate fallback URLs based on accession and title (try common patterns)
+  // Generate fallback URLs based on accession and title
   const getFallbackUrls = (acc, titleName) => {
     if (!acc) return [];
     const accUpper = acc.toUpperCase();
@@ -58,39 +20,32 @@ const AppleImage = ({ imageUrl, accession, title, apiBase }) => {
     
     const urls = [];
     
-    // Try patterns with title + accession (most common pattern based on file listing)
     if (cleanTitle) {
       const titleWords = cleanTitle.split(/\s+/).filter(w => w.length > 2);
-      // Try first word + accession
       if (titleWords.length > 0) {
         urls.push(`${apiBase}/images/${titleWords[0]} ${accUpper}.jpg`);
         urls.push(`${apiBase}/images/${titleWords[0]} ${accUpper}.JPG`);
         urls.push(`${apiBase}/images/${titleWords[0]} ${accUpper}.png`);
         urls.push(`${apiBase}/images/${titleWords[0]} ${accUpper}.PNG`);
       }
-      // Try first two words + accession
       if (titleWords.length > 1) {
         urls.push(`${apiBase}/images/${titleWords[0]} ${titleWords[1]} ${accUpper}.jpg`);
         urls.push(`${apiBase}/images/${titleWords[0]} ${titleWords[1]} ${accUpper}.JPG`);
       }
     }
     
-    // Try patterns with numbers + accession (like "8915 MAL0622.jpg")
     const accNumber = accUpper.match(/MAL(\d+)/);
     if (accNumber) {
       urls.push(`${apiBase}/images/${accNumber[1]} ${accUpper}.jpg`);
       urls.push(`${apiBase}/images/${accNumber[1]} ${accUpper}.JPG`);
     }
     
-    // Try patterns with just accession
     urls.push(`${apiBase}/images/${accUpper}.jpg`);
     urls.push(`${apiBase}/images/${accUpper}.JPG`);
     urls.push(`${apiBase}/images/${accUpper}.png`);
     urls.push(`${apiBase}/images/${accUpper}.PNG`);
     urls.push(`${apiBase}/images/${accLower}.jpg`);
     urls.push(`${apiBase}/images/${accLower}.png`);
-    
-    // Try patterns with -2 suffix
     urls.push(`${apiBase}/images/${accUpper}-2.jpg`);
     urls.push(`${apiBase}/images/${accUpper}-2.JPG`);
     
@@ -98,56 +53,21 @@ const AppleImage = ({ imageUrl, accession, title, apiBase }) => {
   };
   
   const fallbacks = useMemo(() => getFallbackUrls(accession, title), [accession, title, apiBase]);
-  // Priority: imageUrl > foundImage from API > fallbacks
-  // Track if API has been checked
-  const [apiChecked, setApiChecked] = useState(false);
-  const [apiHasImages, setApiHasImages] = useState(false);
+  const allUrls = useMemo(() => imageUrl ? [imageUrl, ...fallbacks] : fallbacks, [imageUrl, fallbacks]);
   
   useEffect(() => {
-    // Mark API as checked when foundImage changes
-    if (imageUrl) {
-      setApiChecked(true);
-      setApiHasImages(true); // Database image exists
-    } else if (foundImage !== undefined) {
-      setApiChecked(true);
-      setApiHasImages(foundImage !== null); // API found images or not
-    }
-  }, [imageUrl, foundImage]);
-  
-  // Only include fallbacks if API was checked and found no images
-  const allUrls = imageUrl 
-    ? [imageUrl] // If database image exists, use only that
-    : (foundImage 
-      ? [foundImage] // If API found image, use only that (no fallbacks needed)
-      : (apiChecked && !apiHasImages ? fallbacks : [])); // Only use fallbacks if API checked and found nothing
-  
-  useEffect(() => {
-    // Reset when imageUrl, foundImage, or accession changes
-    // Don't try fallbacks until API check is complete
-    let initialSrc = null;
-    if (imageUrl) {
-      initialSrc = imageUrl;
-    } else if (foundImage) {
-      initialSrc = foundImage;
-    } else if (apiChecked && !apiHasImages && fallbacks.length > 0) {
-      // Only try fallbacks after API has been checked and found nothing
-      initialSrc = fallbacks[0];
-    }
-    
+    const initialSrc = allUrls.length > 0 ? allUrls[0] : null;
     setCurrentSrc(initialSrc);
     setErrorCount(0);
     setShowPlaceholder(!initialSrc);
-  }, [imageUrl, foundImage, accession, fallbacks, apiChecked, apiHasImages]);
+  }, [imageUrl, accession, allUrls]);
   
   const handleError = () => {
-    // Only try next URL if we have more URLs and haven't exhausted them
     if (allUrls.length > 0 && errorCount < allUrls.length - 1) {
-      // Try next fallback URL
       const nextIndex = errorCount + 1;
       setErrorCount(nextIndex);
       setCurrentSrc(allUrls[nextIndex]);
     } else {
-      // All URLs failed, show placeholder
       setShowPlaceholder(true);
     }
   };
@@ -157,15 +77,27 @@ const AppleImage = ({ imageUrl, accession, title, apiBase }) => {
   };
   
   if (!currentSrc || showPlaceholder) {
-    return <div className="av-noimg" style={{ display: 'flex' }}>No Image</div>;
-  }
+  return (
+    <img 
+      src={`${apiBase}/images/sadapple.png`}
+      alt="No image available" 
+      loading="lazy"
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+      onError={(e) => {
+        // If sadapple.jpg also fails, show text fallback
+        e.target.style.display = 'none';
+        e.target.parentElement.innerHTML = '<div class="av-noimg" style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f3f4f6; color: #6b7280;">No Image</div>';
+      }}
+    />
+  );
+}
   
   return (
     <img 
-      key={currentSrc} // Force re-render when src changes
+      key={currentSrc}
       src={currentSrc} 
       alt={title} 
-      loading="lazy" 
+      loading="lazy"
       onError={handleError}
       onLoad={handleLoad}
       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
@@ -176,92 +108,34 @@ const AppleImage = ({ imageUrl, accession, title, apiBase }) => {
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
 export default function LibraryV2() {
-  // Exact column order from Excel file - all 54 columns in sequence
   const columnOrder = [
-    "SITE ID",
-    "PREFIX (ACP)",
-    "ACNO",
-    "ACCESSION",
-    "CULTIVAR NAME",
-    "FAMILY",
-    "HABITAT",
-    "BREEDER OR COLLECTOR",
-    "GENUS",
-    "SPECIES",
-    "INVENTORY TYPE",
-    "INVENTORY MAINTENANCE POLICY",
-    "PLANT TYPE",
-    "LIFE FORM",
-    "IS DISTRIBUTABLE?",
-    "FRUITSHAPE 115057",
-    "FRUITLGTH 115156",
-    "FRUITWIDTH 115157",
-    "FRTWEIGHT 115121",
-    "FRTSTEMTHK 115127",
-    "SEEDCOLOR 115086",
-    "SSIZE Quantity of Seed",
-    "SEEDLENGTH 115163",
-    "SEEDWIDTH 115164",
-    "SEEDNUMBER 115087",
-    "FRTTEXTURE 115123",
-    "FRTSTMLGTH 115158",
-    "SEEDSHAPE 115167",
-    "FRTFLSHOXI 115129",
-    "FIRST BLOOM DATE",
-    "FULL BLOOM DATE",
-    "COLOUR",
-    "DENSITY",
-    "FIREBLIGHT RATING",
-    "TAXON",
-    "CMT",
-    "NARATIVEKEYWORD",
-    "FULL NARATIVE",
-    "PEDIGREE DESCRIPTION",
-    "AVAILABILITY STATUS ",
-    "PROVINCE/STATE",
-    "COUNTRY",
-    "LOCATION SECTION 1",
-    "LOCATION SECTION 2",
-    "LOCATION SECTION 3",
-    "LOCATION SECTION 4",
-    "COOPERATOR",
-    "IPR TYPE",
-    "LABEL NAME",
-    "LEVEL OF IMPROVEMENT",
-    "RELEASED DATE",
-    "RELEASED DATE FORMAT",
-    "COOPERATOR_NEW",
-    "IMAGES"
+    "SITE ID", "PREFIX (ACP)", "ACNO", "ACCESSION", "CULTIVAR NAME", "FAMILY", "HABITAT",
+    "BREEDER OR COLLECTOR", "GENUS", "SPECIES", "INVENTORY TYPE", "INVENTORY MAINTENANCE POLICY",
+    "PLANT TYPE", "LIFE FORM", "IS DISTRIBUTABLE?", "FRUITSHAPE 115057", "FRUITLGTH 115156",
+    "FRUITWIDTH 115157", "FRTWEIGHT 115121", "FRTSTEMTHK 115127", "SEEDCOLOR 115086",
+    "SSIZE Quantity of Seed", "SEEDLENGTH 115163", "SEEDWIDTH 115164", "SEEDNUMBER 115087",
+    "FRTTEXTURE 115123", "FRTSTMLGTH 115158", "SEEDSHAPE 115167", "FRTFLSHOXI 115129",
+    "FIRST BLOOM DATE", "FULL BLOOM DATE", "COLOUR", "DENSITY", "FIREBLIGHT RATING", "TAXON",
+    "CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "PEDIGREE DESCRIPTION", "AVAILABILITY STATUS ",
+    "PROVINCE/STATE", "COUNTRY", "LOCATION SECTION 1", "LOCATION SECTION 2", "LOCATION SECTION 3",
+    "LOCATION SECTION 4", "COOPERATOR", "IPR TYPE", "LABEL NAME", "LEVEL OF IMPROVEMENT",
+    "RELEASED DATE", "RELEASED DATE FORMAT", "COOPERATOR_NEW", "IMAGES"
   ];
 
   const navigate = useNavigate();
   const [apples, setApples] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("table"); // 'table' | 'pictures'
+  const [viewMode, setViewMode] = useState("table");
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState(""); // Debounced query for performance
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [filters, setFilters] = useState({
-    acno: "",
-    accession: "",
-    country: "",
-    province: "",
-    city: "",
-    pedigree: "",
-    taxon: ""
+    acno: "", accession: "", country: "", province: "", city: "", pedigree: "", taxon: ""
   });
-  const [sortBy, setSortBy] = useState({ field: "", order: "" }); // { field: "ACCESSION" | "CULTIVAR NAME", order: "ascending" | "descending" | "latest" }
-
-  // Selection state
+  const [sortBy, setSortBy] = useState({ field: "", order: "" });
   const [selectedRecords, setSelectedRecords] = useState(new Set());
-
-  // Download dropdown state
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
   const downloadDropdownRef = useRef(null);
-
-  // Error message state
   const [errorMessage, setErrorMessage] = useState(null);
-
-  // Autocomplete state
   const [showSuggest, setShowSuggest] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchBoxRef = useRef(null);
@@ -269,47 +143,47 @@ export default function LibraryV2() {
   const manuallyClosedRef = useRef(false);
   const allDataRef = useRef([]);
 
-  // Helper to get unique record ID (stable, doesn't depend on array index)
+  // OPTIMIZATION: Pagination state
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    total: 0,
+    totalPages: 0,
+    hasMore: false,
+    hasLess: false
+  });
+
+  // OPTIMIZATION: Batch image loading state
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+
   const getRecordId = (record, index) => {
     if (record._id) return record._id;
     if (record.id) return record.id;
     const acno = record.acno ?? "";
     const accession = record.accession ?? "";
-    if (acno || accession) {
-      return `${acno}_${accession}`;
-    }
+    if (acno || accession) return `${acno}_${accession}`;
     return `record_${index}`;
   };
 
-  // Debounce query updates for table filtering only (not for suggestions)
-  // This allows input and suggestions to be instant while filtering is optimized
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(query);
-    }, 100); // 100ms debounce for table filtering - faster response
-    
+    }, 100);
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Decide suggestion mode based on query
   const isAccessionMode = useMemo(() => /^mal/i.test(query.trim()), [query]);
-  const suggestionKey = isAccessionMode ? "accession" : "cultivar_name";
 
-  // Helper to normalize column names for matching (handles variations) - defined early for use in search
   const normalizeColumnName = (name) => {
     return String(name || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   };
 
-  // Helper to get field value from record using Excel column name (optimized for performance)
   const getFieldValueForSearch = (record, excelColumnName) => {
-    // Fast path: Try exact Excel column name in metadata first (most common case)
     if (record.metadata) {
       const metadataValue = record.metadata[excelColumnName];
       if (metadataValue !== undefined && metadataValue !== null && metadataValue !== '') {
         return metadataValue;
       }
-      
-      // Try with trimmed version (handle trailing spaces)
       const trimmedColumnName = excelColumnName.trim();
       if (trimmedColumnName !== excelColumnName) {
         const trimmedValue = record.metadata[trimmedColumnName];
@@ -318,14 +192,10 @@ export default function LibraryV2() {
         }
       }
     }
-    
-    // Try exact Excel column name in direct fields
     const directValue = record[excelColumnName];
     if (directValue !== undefined && directValue !== null && directValue !== '') {
       return directValue;
     }
-    
-    // Last resort: normalized match (only if needed, as it's expensive)
     if (record.metadata) {
       const normalizedExcel = normalizeColumnName(excelColumnName);
       for (const key of Object.keys(record.metadata)) {
@@ -337,56 +207,35 @@ export default function LibraryV2() {
         }
       }
     }
-    
     return '';
   };
 
-  // Use deferred value for suggestions - prevents blocking input updates
-  // This ensures input typing is NEVER blocked by suggestion calculations
   const deferredQuery = useDeferredValue(query);
   
-  // Generate suggestions from local data - ULTRA-OPTIMIZED and NON-BLOCKING
-  // Uses deferredQuery so it doesn't block input rendering
   const suggestions = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
-    if (!q || q.length < 1) return []; // Early exit for empty query
+    if (!q || q.length < 1) return [];
 
-    // Use cached data reference for faster access
     const dataSource = allDataRef.current.length > 0 ? allDataRef.current : apples;
     if (!dataSource || dataSource.length === 0) return [];
     
-    // Search more records to find matches like "M. sieversii" when searching "sie"
     const maxRecordsToSearch = Math.min(500, dataSource.length);
-    
-    // Search columns: ACCESSION, CULTIVAR NAME, FRUITLGTH 115156, FRUITWIDTH 115157, NARATIVEKEYWORD, TAXON
-    const searchColumns = [
-      'ACCESSION',
-      'CULTIVAR NAME',
-      'FRUITLGTH 115156',
-      'FRUITWIDTH 115157',
-      'NARATIVEKEYWORD',
-      'TAXON'
-    ];
-
+    const searchColumns = ['ACCESSION', 'CULTIVAR NAME', 'FRUITLGTH 115156', 'FRUITWIDTH 115157', 'NARATIVEKEYWORD', 'TAXON'];
     const seen = new Set();
     const filtered = [];
-    const maxResults = 10; // Increased to show more suggestions
+    const maxResults = 10;
     const qLength = q.length;
     
-    // Helper to get field value from record (checks both metadata and direct fields)
     const getFieldValue = (record, columnName) => {
-      // Check metadata first (where Excel columns are stored)
       if (record.metadata) {
         const metadataValue = record.metadata[columnName] || record.metadata[columnName.trim()];
         if (metadataValue !== undefined && metadataValue !== null && metadataValue !== '') {
           return String(metadataValue).trim();
         }
       }
-      // Check direct fields as fallback
       if (record[columnName] !== undefined && record[columnName] !== null && record[columnName] !== '') {
         return String(record[columnName]).trim();
       }
-      // For TAXON, also check lowercase variations
       if (columnName === 'TAXON') {
         if (record.taxon !== undefined && record.taxon !== null && record.taxon !== '') {
           return String(record.taxon).trim();
@@ -395,50 +244,34 @@ export default function LibraryV2() {
       return null;
     };
     
-    // Search through records - check both metadata and direct fields
     outerLoop: for (let i = 0; i < maxRecordsToSearch && filtered.length < maxResults; i++) {
       const record = dataSource[i];
-      
-      // Search each column
       for (let j = 0; j < searchColumns.length && filtered.length < maxResults; j++) {
         const column = searchColumns[j];
         const value = getFieldValue(record, column);
-        
         if (value && value.length >= qLength) {
           const lower = value.toLowerCase();
-          // Check if query matches (case-insensitive partial match)
-          // This will match "sie" in "M. sieversii" or "Malus sieversii"
-            if (lower.includes(q)) {
-            // Use original value (not lowercased) for display
-              if (!seen.has(lower)) {
-                seen.add(lower);
+          if (lower.includes(q)) {
+            if (!seen.has(lower)) {
+              seen.add(lower);
               filtered.push(value);
-                if (filtered.length >= maxResults) break outerLoop;
+              if (filtered.length >= maxResults) break outerLoop;
             }
           }
         }
       }
     }
-    
-    return filtered.sort(); // Sort alphabetically
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return filtered.sort();
   }, [deferredQuery, apples]);
 
-  // Helper to find matching database field for Excel column name
   const findMatchingField = (excelCol, record) => {
-    // Try exact match first (direct field)
     if (record[excelCol] !== undefined && record[excelCol] !== null && record[excelCol] !== '') {
       return excelCol;
     }
-    
-    // Try exact match in metadata
     if (record.metadata && record.metadata[excelCol] !== undefined && record.metadata[excelCol] !== null && record.metadata[excelCol] !== '') {
       return excelCol;
     }
-    
     const normalizedExcel = normalizeColumnName(excelCol);
-    
-    // Try case-insensitive match in direct fields
     for (const key of Object.keys(record)) {
       if (key !== '_id' && key !== '__v' && !key.startsWith('$') && key !== 'excelRowIndex' && key !== 'metadata' && key !== 'images') {
         if (normalizeColumnName(key) === normalizedExcel) {
@@ -449,8 +282,6 @@ export default function LibraryV2() {
         }
       }
     }
-    
-    // Try in metadata with case-insensitive
     if (record.metadata) {
       for (const key of Object.keys(record.metadata)) {
         if (normalizeColumnName(key) === normalizedExcel) {
@@ -461,9 +292,6 @@ export default function LibraryV2() {
         }
       }
     }
-    
-    // Try common field name mappings (Excel -> Database)
-    // UPDATED: Include space-separated versions that match actual database fields
     const fieldMappings = {
       'CULTIVAR NAME': ['cultivar_name', 'CULTIVAR NAME', 'cultivar', 'name'],
       'ACNO': ['acno', 'ACNO', 'AC_NO'],
@@ -478,89 +306,56 @@ export default function LibraryV2() {
       'HABITAT': ['e habitat', 'e_habitat', 'habitat', 'HABITAT'],
       'FAMILY': ['family', 'FAMILY'],
       'TAXON': ['taxon', 'taxno', 'TAXON'],
-      'SITE ID': ['site id', 'site_id', 'site', 'SITE ID'],
-      'PREFIX (ACP)': ['acp', 'prefix acp', 'acp (accession prefix)', 'PREFIX (ACP)'],
-      'AVAILABILITY STATUS ': ['status', 'distribute', 'availability status', 'AVAILABILITY STATUS ', 'AVAILABILITY STATUS'],
-      'LIFE FORM': ['plant type', 'plant_type', 'LIFE FORM', 'life_form'],
-      'INVENTORY TYPE': ['ivt', 'ivt (inventory type)', 'inventory type', 'inventory_type', 'INVENTORY TYPE'],
-      'PLANT TYPE': ['plant type', 'plant_type', 'PLANT TYPE']
     };
-    
     if (fieldMappings[excelCol]) {
       for (const variation of fieldMappings[excelCol]) {
-        // Check direct field
         if (record[variation] !== undefined && record[variation] !== null && record[variation] !== '') {
           return variation;
         }
-        // Check metadata
         if (record.metadata && record.metadata[variation] !== undefined && record.metadata[variation] !== null && record.metadata[variation] !== '') {
           return variation;
         }
       }
     }
-    
-    // For all other columns, try to find in metadata (most Excel columns are stored in metadata)
     if (record.metadata) {
-      // Try exact match in metadata keys
       if (record.metadata[excelCol] !== undefined) {
-        return excelCol; // Return the Excel column name, value will be retrieved from metadata
+        return excelCol;
       }
-      
-      // Try normalized match in metadata
       for (const key of Object.keys(record.metadata)) {
         if (normalizeColumnName(key) === normalizedExcel) {
           return key;
         }
       }
     }
-    
-    // Return Excel column name as fallback (will try to get from metadata with that key)
     return excelCol;
   };
 
-  // Get columns in exact Excel order - use hardcoded columnOrder array
   const getAllColumns = useMemo(() => {
-    // Always use the hardcoded columnOrder array (54 columns in exact Excel sequence)
     return columnOrder;
   }, []);
 
-  // Helper to get field value from record using Excel column name
   const getFieldValue = (record, excelColumnName) => {
-    // Find the matching database field for this Excel column
     const dbField = findMatchingField(excelColumnName, record);
-    
     if (dbField && dbField !== excelColumnName) {
-      // If we found a different field name, try to get value from it
-      // Try direct access first
       if (record[dbField] !== undefined && record[dbField] !== null && record[dbField] !== '') {
         return record[dbField];
       }
-      
-      // Try metadata
       if (record.metadata && record.metadata[dbField] !== undefined && record.metadata[dbField] !== null && record.metadata[dbField] !== '') {
         return record.metadata[dbField];
       }
     }
-    
-    // Try exact Excel column name in direct fields
     if (record[excelColumnName] !== undefined && record[excelColumnName] !== null && record[excelColumnName] !== '') {
       return record[excelColumnName];
     }
-    
-    // Try exact Excel column name in metadata (most Excel columns are stored here)
     if (record.metadata && record.metadata[excelColumnName] !== undefined && record.metadata[excelColumnName] !== null && record.metadata[excelColumnName] !== '') {
       return record.metadata[excelColumnName];
     }
-    
-    // Try with trimmed version (handle trailing spaces)
     const trimmedColumnName = excelColumnName.trim();
     if (trimmedColumnName !== excelColumnName) {
       if (record.metadata && record.metadata[trimmedColumnName] !== undefined && record.metadata[trimmedColumnName] !== null && record.metadata[trimmedColumnName] !== '') {
         return record.metadata[trimmedColumnName];
       }
     }
-    
-    // Try normalized match in metadata as last resort
     if (record.metadata) {
       const normalizedExcel = normalizeColumnName(excelColumnName);
       for (const key of Object.keys(record.metadata)) {
@@ -572,41 +367,31 @@ export default function LibraryV2() {
         }
       }
     }
-    
     return '';
   };
 
-  // Helper to render a cell with truncation + tooltip
   const renderCell = (value, columnName) => {
     const text = value === null || value === undefined ? "" : String(value);
-    
-    // Columns that should have truncated text with tooltip (same space allocation as other columns)
     const longTextColumns = ["CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "COOPERATOR", "PEDIGREE DESCRIPTION", "COOPERATOR_NEW", "AVAILABILITY STATUS "];
     const shouldTruncate = longTextColumns.includes(columnName);
-    
-    // Columns that should be center-aligned (numeric/ID columns)
     const centerAlignedColumns = ["ACNO"];
     const shouldCenterAlign = centerAlignedColumns.includes(columnName);
-    
-    // Truncate text for specified columns (max 50 characters to keep consistent with other columns)
     const maxLength = 50;
-    const displayText = shouldTruncate && text.length > maxLength 
-      ? text.substring(0, maxLength) + "..." 
-      : text;
+    const displayText = shouldTruncate && text.length > maxLength ? text.substring(0, maxLength) + "..." : text;
     
     return (
       <td
         key={columnName}
         className="av-td"
-        data-full-text={text} // used by CSS ::after for tooltip
-        title={shouldTruncate && text.length > maxLength ? text : text} // Show full text in tooltip
+        data-full-text={text}
+        title={shouldTruncate && text.length > maxLength ? text : text}
         style={{
-          maxWidth: shouldTruncate ? '180px' : undefined, // Constrain width for long text columns
-          minWidth: shouldTruncate ? '120px' : undefined, // Same min width as other columns
+          maxWidth: shouldTruncate ? '180px' : undefined,
+          minWidth: shouldTruncate ? '120px' : undefined,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          textAlign: shouldCenterAlign ? 'center' : 'left' // Center align ACNO cells
+          textAlign: shouldCenterAlign ? 'center' : 'left'
         }}
       >
         {displayText}
@@ -614,131 +399,192 @@ export default function LibraryV2() {
     );
   };
 
-  // Function to fetch data
-  const fetchData = async (searchTerm = "") => {
+  // OPTIMIZATION: Fetch data with pagination
+  const fetchData = async (searchTerm = "", page = 1) => {
     try {
       setLoading(true);
-      const url = searchTerm ? `${API_BASE}/api/apples?search=${encodeURIComponent(searchTerm)}` : `${API_BASE}/api/apples`;
+      const url = `${API_BASE}/api/apples?page=${page}&limit=50${searchTerm ? `&search=${encodeURIComponent(searchTerm)}` : ''}`;
       console.log("🔍 Fetching data from:", url);
 
       const res = await fetch(url, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       }).catch(err => {
         console.error("❌ Network error:", err);
-        throw new Error(`Cannot connect to backend server at ${API_BASE}. Please ensure the server is running.`);
+        throw new Error(`Cannot connect to backend server at ${API_BASE}`);
       });
 
       console.log("📡 Response status:", res.status, res.statusText);
 
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status} ${res.statusText}`);
+        throw new Error(`HTTP error! status: ${res.status}`);
       }
 
       const data = await res.json();
-      console.log("📦 Data received:", Array.isArray(data) ? data.length : "Not an array", "items");
+      console.log("📦 Data received:", data);
 
-      // server might return { apples: [...] } or array directly
-      const normalized = Array.isArray(data) ? data : (Array.isArray(data.apples) ? data.apples : (Array.isArray(data.data) ? data.data : []));
-      console.log("✅ Setting apples state:", normalized.length, "records");
+      // Handle both old and new response formats
+      let newApples = [];
+      let paginationData = {};
       
-      // Verify order - first record should be "Heyer #6" (first in Excel)
-      if (normalized.length > 0) {
-        const firstRecord = normalized[0];
-        const firstCultivar = firstRecord.cultivar_name || firstRecord['CULTIVAR NAME'] || 'Unknown';
-        console.log("📋 First record in response:", firstCultivar, "- excelRowIndex:", firstRecord.excelRowIndex);
-      }
-
-      // If search returns no results but we have cached data, filter locally instead
-      if (searchTerm && normalized.length === 0 && allDataRef.current.length > 0) {
-        console.log("⚠️ Search returned no results, filtering cached data locally");
-        const searchLower = searchTerm.toLowerCase();
-        const filtered = allDataRef.current.filter((row) => {
-          const cultivarName = (row.cultivar_name || row['CULTIVAR NAME'] || row.name || '').toLowerCase();
-          const accession = (row.accession || row.ACCESSION || '').toLowerCase();
-          const acno = String(row.acno || row.ACNO || '').toLowerCase();
-          return cultivarName.includes(searchLower) ||
-                 accession.includes(searchLower) ||
-                 acno.includes(searchLower);
-        });
-        setApples(filtered);
+      if (Array.isArray(data)) {
+        // Old format: direct array
+        console.log("⚠️ Old format detected - using direct array");
+        newApples = data;
+        paginationData = {
+          page: 1,
+          limit: data.length,
+          total: data.length,
+          totalPages: 1,
+          hasMore: false,
+          hasLess: false
+        };
+      } else if (data.apples) {
+        // New format: { apples: [], pagination: {} }
+        console.log("✅ New format detected - using pagination");
+        newApples = data.apples || [];
+        paginationData = data.pagination || {
+          page: 1,
+          limit: 50,
+          total: newApples.length,
+          totalPages: 1,
+          hasMore: false,
+          hasLess: false
+        };
       } else {
-        setApples(normalized);
+        console.error("❌ Unexpected response format:", data);
+        newApples = [];
+        paginationData = {
+          page: 1,
+          limit: 50,
+          total: 0,
+          totalPages: 0,
+          hasMore: false,
+          hasLess: false
+        };
+      }
+      
+      console.log("✅ Setting apples state:", newApples.length, "records");
+      
+      if (newApples.length > 0) {
+        const firstRecord = newApples[0];
+        const firstCultivar = firstRecord.cultivar_name || firstRecord['CULTIVAR NAME'] || 'Unknown';
+        console.log("📋 First record in response:", firstCultivar);
       }
 
-      // Cache full dataset when fetching all data (not a search)
-      if (!searchTerm) {
-        allDataRef.current = normalized;
+      setApples(newApples || []);
+      setPagination({
+        page: paginationData.page || 1,
+        limit: paginationData.limit || 50,
+        total: paginationData.total || 0,
+        totalPages: paginationData.totalPages || 1,
+        hasMore: paginationData.hasMore || false,
+        hasLess: paginationData.hasLess || false
+      });
+
+      // Cache full dataset only on initial load (page 1, no search)
+      if (page === 1 && !searchTerm) {
+        allDataRef.current = newApples;
+      }
+
+      // OPTIMIZATION: Batch load images for apples without images
+      if (!imagesLoaded && newApples.length > 0) {
+        fetchMissingImages(newApples);
       }
 
     } catch (e) {
       console.error("❌ Failed to load apples:", e);
-      if (allDataRef.current.length > 0) {
-        console.log("⚠️ Using cached data after fetch error");
-        // If we have cached data and a search term, filter it locally
-        if (searchTerm) {
-          const searchLower = searchTerm.toLowerCase();
-          const filtered = allDataRef.current.filter((row) => {
-            const cultivarName = (row.cultivar_name || row['CULTIVAR NAME'] || row.name || '').toLowerCase();
-            const accession = (row.accession || row.ACCESSION || '').toLowerCase();
-            const acno = String(row.acno || row.ACNO || '').toLowerCase();
-            return cultivarName.includes(searchLower) ||
-                   accession.includes(searchLower) ||
-                   acno.includes(searchLower);
-          });
-          setApples(filtered);
-        } else {
-          setApples(allDataRef.current);
-        }
-      } else {
-        setApples([]);
-        setErrorMessage(e.message || "Failed to fetch data");
-        setTimeout(() => setErrorMessage(null), 5000);
-      }
+      setApples([]);
+      setErrorMessage(e.message || "Failed to fetch data");
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // OPTIMIZATION: Batch fetch missing images
+  const fetchMissingImages = async (applesData) => {
+    try {
+      console.log("🖼️ Checking for missing images...");
+      
+      // Get accessions for apples that have no images in database
+      const missingImageAccessions = applesData
+        .filter(a => !a.images || a.images.length === 0)
+        .map(a => a.accession || a.ACCESSION)
+        .filter(Boolean);
+      
+      if (missingImageAccessions.length === 0) {
+        console.log("✅ All apples have images in database");
+        setImagesLoaded(true);
+        return;
+      }
+      
+      console.log(`🔍 Fetching images for ${missingImageAccessions.length} apples...`);
+      
+      const response = await fetch(`${API_BASE}/api/apples/find-images-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessions: missingImageAccessions })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.results) {
+        console.log(`✅ Found images for ${data.found}/${data.total} apples`);
+        
+        // Update apples with found images
+        setApples(prevApples => 
+          prevApples.map(apple => {
+            const accession = apple.accession || apple.ACCESSION;
+            if (data.results[accession]) {
+              return { ...apple, images: data.results[accession] };
+            }
+            return apple;
+          })
+        );
+        
+        // Update cached data too
+        if (allDataRef.current.length > 0) {
+          allDataRef.current = allDataRef.current.map(apple => {
+            const accession = apple.accession || apple.ACCESSION;
+            if (data.results[accession]) {
+              return { ...apple, images: data.results[accession] };
+            }
+            return apple;
+          });
+        }
+      }
+      
+      setImagesLoaded(true);
+    } catch (error) {
+      console.error("❌ Error fetching missing images:", error);
+      setImagesLoaded(true); // Don't block on error
     }
   };
 
   // Initial data fetch
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle side effects when query changes - moved from onChange for performance
-  // FIXED: Removed 'apples' from dependency array to prevent infinite loop
   useEffect(() => {
-    // Reset active index when query changes
     setActiveIndex(-1);
     manuallyClosedRef.current = false;
     
-    // Handle empty query - clear suggestions and reset data
     if (!query.trim()) {
       setShowSuggest(false);
-      // Defer data reset to prevent blocking
-      startTransition(() => {
-        if (allDataRef.current.length > 0) {
-          setApples(allDataRef.current);
-        } else if (apples.length === 0) {
-          fetchData();
-        }
-      });
+      // Don't automatically reset data - let user explicitly clear
       return;
     }
     
-    // Show suggestions when query has text and suggestions are available
     if (manuallyClosedRef.current) {
       manuallyClosedRef.current = false;
       return;
     }
     const shouldShow = Boolean(query.trim() && suggestions.length > 0);
     setShowSuggest(shouldShow);
-  }, [query, suggestions]); // FIXED: Removed 'apples' - was causing infinite loop
+  }, [query, suggestions]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const onDoc = (e) => {
       if (!e.target.closest('.av-searchbox')) {
@@ -754,63 +600,46 @@ export default function LibraryV2() {
     return () => document.removeEventListener('mousedown', onDoc);
   }, []);
 
-  // Run search and update data
   const runSearch = async (term) => {
     manuallyClosedRef.current = true;
-    await fetchData(term);
     setShowSuggest(false);
+    
+    // If term is empty, reset to original data
+    if (!term || !term.trim()) {
+      setQuery("");
+      await fetchData("", 1);
+      return;
+    }
+    
+    // Call API with search term
+    await fetchData(term.trim(), 1);
   };
 
-  // Handle picking a suggestion
-  const handlePick = (value) => {
+  const handleClearSearch = async () => {
+    setQuery("");
+    setShowSuggest(false);
+    await fetchData("", 1);
+  };
+
+  const handlePick = async (value) => {
     manuallyClosedRef.current = true;
     setQuery(value);
     setShowSuggest(false);
     setActiveIndex(-1);
     inputRef.current?.blur();
     
-    // Filter local data instead of making API call
-    const dataSource = allDataRef.current.length > 0 ? allDataRef.current : apples;
-    const searchTerm = value.trim().toLowerCase();
-    
-    if (!searchTerm) {
-      setApples(dataSource);
-      return;
+    // Call API with selected value
+    if (value && value.trim()) {
+      await fetchData(value.trim(), 1);
+    } else {
+      await fetchData("", 1);
     }
-    
-    const filtered = dataSource.filter((row) => {
-      // Helper to get field value from record using Excel column name
-      const getSearchValue = (columnName) => {
-        const value = getFieldValueForSearch(row, columnName);
-        return value ? String(value).toLowerCase() : '';
-      };
-
-      // Search across specified columns: ACCESSION, CULTIVAR NAME, FRUITLGTH 115156, FRUITWIDTH 115157, NARATIVEKEYWORD, TAXON
-      const searchColumns = [
-        'ACCESSION',
-        'CULTIVAR NAME',
-        'FRUITLGTH 115156',
-        'FRUITWIDTH 115157',
-        'NARATIVEKEYWORD',
-        'TAXON'
-      ];
-      
-      return searchColumns.some(column => {
-        const value = getSearchValue(column);
-        return value.includes(searchTerm);
-      });
-    });
-    
-    setApples(filtered);
   };
 
-  // Input change handler - PURE typing logic (zero blocking, instant updates)
-  // ONLY updates the query state - all other logic moved to useEffect
   const onInputChange = (e) => {
     setQuery(e.target.value);
   };
 
-  // Keyboard handlers for autocomplete
   const onKeyDown = (e) => {
     if (e.key === 'Escape') {
       setShowSuggest(false);
@@ -840,141 +669,84 @@ export default function LibraryV2() {
     }
   };
 
-  // UPDATED FILTERED LOGIC WITH CORRECT FIELD NAMES - optimized for performance
-  // Memoized to prevent re-renders when only query changes (before debounce completes)
+  // Track if we did a server-side search (to avoid double-filtering)
+  const [serverSearchActive, setServerSearchActive] = useState(false);
+
+  // OPTIMIZATION: Client-side filtering with proper field access
   const filtered = useMemo(() => {
     if (!apples || apples.length === 0) {
       return [];
     }
 
-    const q = debouncedQuery.trim().toLowerCase();
-
-    // Pre-define search columns outside the filter function
-    const searchColumns = [
-      'ACCESSION',
-      'CULTIVAR NAME',
-      'FRUITLGTH 115156',
-      'FRUITWIDTH 115157',
-      'NARATIVEKEYWORD',
-      'TAXON'
-    ];
-
-    // Helper to get field value from multiple possible field names
-    // Checks both direct fields and metadata (where Excel columns are stored)
     const getField = (row, fieldNames) => {
       for (const field of fieldNames) {
         // Check direct field first
         let value = row?.[field];
         if (value !== undefined && value !== null && value !== '') {
-          return String(value);
+          return String(value).trim();
         }
-        
-        // Check metadata field if direct field not found
+        // Check metadata field - handle both Map and plain Object
         if (row?.metadata) {
-          value = row.metadata[field];
+          // If metadata is a Map (has .get method)
+          if (typeof row.metadata.get === 'function') {
+            value = row.metadata.get(field);
+          } else {
+            // Plain object
+            value = row.metadata[field];
+          }
           if (value !== undefined && value !== null && value !== '') {
-            return String(value);
+            return String(value).trim();
           }
         }
       }
       return '';
     };
 
-    // Optimized: use some() for early exit when match is found
+    // Only apply sidebar filters, NOT search query (server already filtered by query)
     const filteredData = apples.filter((row) => {
-      // Search query matching
-      let byQuery = true;
-      if (q) {
-        byQuery = false;
-        const metadata = row.metadata;
-        
-        // Ultra-fast path: direct metadata access (most common case)
-        if (metadata) {
-          for (let i = 0; i < searchColumns.length; i++) {
-            const column = searchColumns[i];
-            const value = metadata[column] || metadata[column.trim()];
-            if (value) {
-              const lower = String(value).toLowerCase();
-              if (lower.includes(q)) {
-                byQuery = true;
-                break;
-              }
-            }
-          }
-        }
-        
-        // Fallback: check direct fields or use helper
-        if (!byQuery) {
-          for (let i = 0; i < searchColumns.length; i++) {
-            const column = searchColumns[i];
-            let value = row[column];
-            if (!value && metadata) {
-              value = getFieldValueForSearch(row, column);
-            }
-            if (value) {
-              const lower = String(value).toLowerCase();
-              if (lower.includes(q)) {
-                byQuery = true;
-                break;
-              }
-            }
-          }
-        }
-      }
+      // Get values for comparison - using ACTUAL field names from data
+      const rowAcno = getField(row, ['acno', 'ACNO']);
+      const rowAccession = getField(row, ['accession', 'ACCESSION']);
+      const rowCountry = getField(row, ['e_origin_country', 'country', 'COUNTRY']);
+      const rowProvince = getField(row, ['e_origin_province', 'province_state', 'PROVINCE/STATE']);
+      const rowPedigree = getField(row, ['pedigree_description', 'e_pedigree', 'PEDIGREE DESCRIPTION']);
+      const rowTaxon = getField(row, ['taxon', 'TAXON']);
 
-      // Filter matching
       const match =
-        (!filters.acno || filters.acno === "" || String(getField(row, ['acno', 'ACNO']) || "") === String(filters.acno)) &&
-        (!filters.accession || filters.accession === "" || getField(row, ['accession', 'ACCESSION']) === filters.accession) &&
-        (!filters.country || filters.country === "" || getField(row, ['e origin country', 'E Origin Country', 'e_origin_country', 'COUNTRY']) === filters.country) &&
-        (!filters.province || filters.province === "" || getField(row, ['e origin province', 'E Origin Province', 'e_origin_province', 'PROVINCE/STATE']) === filters.province) &&
-        (!filters.pedigree || filters.pedigree === "" || getField(row, ['e pedigree', 'E pedigree', 'E Pedigree', 'e_pedigree', 'PEDIGREE DESCRIPTION']) === filters.pedigree) &&
-        (!filters.taxon || filters.taxon === "" || getField(row, ['TAXON', 'taxon']) === filters.taxon);
+        (!filters.acno || filters.acno === "" || rowAcno === filters.acno) &&
+        (!filters.accession || filters.accession === "" || rowAccession === filters.accession) &&
+        (!filters.country || filters.country === "" || rowCountry === filters.country) &&
+        (!filters.province || filters.province === "" || rowProvince === filters.province) &&
+        (!filters.pedigree || filters.pedigree === "" || rowPedigree === filters.pedigree) &&
+        (!filters.taxon || filters.taxon === "" || rowTaxon === filters.taxon);
 
-      return byQuery && match;
+      return match;
     });
 
-    if (apples.length > 0 && filteredData.length === 0) {
-      console.log("⚠️ All data filtered out:", { applesCount: apples.length, query: q, filters });
-    }
-
-    // Apply sorting
     let sortedData = [...filteredData];
     if (sortBy.field && sortBy.order) {
       sortedData.sort((a, b) => {
         if (sortBy.order === "latest") {
-          // Sort by latest added (newest first based on timestamps)
           const getTimestamp = (record) => {
-            // Try createdAt first, then updatedAt, then excelRowIndex (higher = newer in Excel)
-            if (record.createdAt) {
-              return new Date(record.createdAt).getTime();
-            }
-            if (record.updatedAt) {
-              return new Date(record.updatedAt).getTime();
-            }
-            // If no timestamp, use excelRowIndex (higher number = newer)
+            if (record.createdAt) return new Date(record.createdAt).getTime();
+            if (record.updatedAt) return new Date(record.updatedAt).getTime();
             return record.excelRowIndex || 0;
           };
           const timeA = getTimestamp(a);
           const timeB = getTimestamp(b);
-          return timeB - timeA; // Descending order (newest first)
+          return timeB - timeA;
         } else {
-          // Sort by selected field (ACCESSION or CULTIVAR NAME)
-          let getFieldValue;
+          let getFieldVal;
           if (sortBy.field === "ACCESSION") {
-            getFieldValue = (record) => {
-              return getField(record, ['ACCESSION', 'accession']) || '';
-            };
+            getFieldVal = (record) => getField(record, ['ACCESSION', 'accession']) || '';
           } else if (sortBy.field === "CULTIVAR NAME") {
-            getFieldValue = (record) => {
-              return getField(record, ['CULTIVAR NAME', 'cultivar_name', 'cultivar', 'name']) || '';
-            };
+            getFieldVal = (record) => getField(record, ['CULTIVAR NAME', 'cultivar_name', 'cultivar', 'name']) || '';
           } else {
             return 0;
           }
           
-          const valueA = getFieldValue(a).toLowerCase();
-          const valueB = getFieldValue(b).toLowerCase();
+          const valueA = getFieldVal(a).toLowerCase();
+          const valueB = getFieldVal(b).toLowerCase();
           
           if (sortBy.order === "ascending") {
             return valueA.localeCompare(valueB);
@@ -987,7 +759,7 @@ export default function LibraryV2() {
     }
 
     return sortedData;
-  }, [apples, debouncedQuery, filters, sortBy]);
+  }, [apples, filters, sortBy]);
 
   // Selection handlers
   const handleSelectRecord = (recordId) => {
@@ -1028,7 +800,6 @@ export default function LibraryV2() {
     const deletedIds = new Set();
     const failedDeletions = [];
 
-    // Delete each record from database
     for (const record of recordsToDelete) {
       const recordId = record._id || record.id;
       if (!recordId) {
@@ -1062,17 +833,14 @@ export default function LibraryV2() {
 
     setLoading(false);
 
-    // Remove successfully deleted records from local state
     if (deletedIds.size > 0) {
-    setApples(prev => {
-      return prev.filter(record => {
-          const recordId = record._id || record.id;
-          return !deletedIds.has(recordId);
-      });
-    });
+      setApples(prev => prev.filter(record => {
+        const recordId = record._id || record.id;
+        return !deletedIds.has(recordId);
+      }));
 
-    if (allDataRef.current.length > 0) {
-      allDataRef.current = allDataRef.current.filter(record => {
+      if (allDataRef.current.length > 0) {
+        allDataRef.current = allDataRef.current.filter(record => {
           const recordId = record._id || record.id;
           return !deletedIds.has(recordId);
         });
@@ -1081,7 +849,6 @@ export default function LibraryV2() {
 
     setSelectedRecords(new Set());
 
-    // Show feedback
     if (failedDeletions.length > 0) {
       alert(`Deleted ${deletedIds.size} apple(s) successfully. Failed to delete ${failedDeletions.length} apple(s). Check console for details.`);
     } else {
@@ -1123,7 +890,6 @@ export default function LibraryV2() {
     filtered.some((record, index) => selectedRecords.has(getRecordId(record, index))) &&
     !isAllSelected;
 
-  // Helper used for per-row delete in the table (single)
   const handleDeleteRecord = async (recordId) => {
     const adminToken = localStorage.getItem('adminToken');
     if (!adminToken) {
@@ -1131,7 +897,6 @@ export default function LibraryV2() {
       return;
     }
 
-    // Find the record to get its database ID
     const record = [...apples, ...Array.from(allDataRef.current)].find((r, idx) => getRecordId(r, idx) === recordId);
     if (!record) {
       console.warn('Record not found for deletion:', recordId);
@@ -1160,16 +925,15 @@ export default function LibraryV2() {
       });
 
       if (response.ok) {
-        // Remove from local state only after successful deletion
-    setApples(prev => prev.filter((r, idx) => getRecordId(r, idx) !== recordId));
-    if (allDataRef.current.length > 0) {
-      allDataRef.current = allDataRef.current.filter((r, idx) => getRecordId(r, idx) !== recordId);
-    }
-    setSelectedRecords(prev => {
-      const s = new Set(prev);
-      s.delete(recordId);
-      return s;
-    });
+        setApples(prev => prev.filter((r, idx) => getRecordId(r, idx) !== recordId));
+        if (allDataRef.current.length > 0) {
+          allDataRef.current = allDataRef.current.filter((r, idx) => getRecordId(r, idx) !== recordId);
+        }
+        setSelectedRecords(prev => {
+          const s = new Set(prev);
+          s.delete(recordId);
+          return s;
+        });
         alert(`Successfully deleted "${cultivarName}" from database.`);
         console.log(`✅ Deleted apple: ${cultivarName}`);
       } else {
@@ -1184,6 +948,22 @@ export default function LibraryV2() {
       setLoading(false);
     }
   };
+
+  // OPTIMIZATION: Pagination handlers
+  const handleNextPage = () => {
+    if (pagination.hasMore) {
+      fetchData(query, pagination.page + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (pagination.hasLess) {
+      fetchData(query, pagination.page - 1);
+    }
+  };
+
+  // Long text columns for truncation
+  const longTextColumns = ["CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "COOPERATOR", "PEDIGREE DESCRIPTION", "COOPERATOR_NEW", "AVAILABILITY STATUS "];
 
   return (
     <div className="libv2-page">
@@ -1239,14 +1019,15 @@ export default function LibraryV2() {
                         border: '1px solid #e5e7eb',
                         borderRadius: '8px',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        zIndex: 100,
-                        minWidth: '150px',
+                        zIndex: 9999,
+                        minWidth: '220px',
                         overflow: 'hidden'
                       }}>
+                        {/* CSV Export */}
                         <button
                           onClick={() => {
-                            const dataToExport = allDataRef.current.length > 0 ? allDataRef.current : apples;
-                            exportCSV(dataToExport, selectedRecords.size > 0 ? selectedRecords : null, setErrorMessage);
+                            const dataToExport = filtered.length > 0 ? filtered : apples;
+                            exportCSV(dataToExport, selectedRecords.size > 0 ? selectedRecords : null, setErrorMessage, getRecordId);
                             setShowDownloadDropdown(false);
                           }}
                           style={{
@@ -1262,58 +1043,31 @@ export default function LibraryV2() {
                           onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                           onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
-                          CSV
+                          <div style={{ fontWeight: '500' }}>CSV (Data Only)</div>
+                          <div style={{ fontSize: '11px', color: '#6b7280' }}>Export selected as spreadsheet</div>
                         </button>
+                        
+                        {/* PDF Combined */}
                         <button
                           onClick={async () => {
                             setShowDownloadDropdown(false);
-                            const dataToExport = allDataRef.current.length > 0 ? allDataRef.current : apples;
                             const selectedCount = selectedRecords.size;
                             
                             if (selectedCount === 0) {
-                              if (setErrorMessage) {
-                                setErrorMessage("To download, select the apples");
-                                setTimeout(() => setErrorMessage(null), 5000);
-                              } else {
-                                alert("To download, select the apples");
-                              }
+                              setErrorMessage("To download PDF, select apples using checkboxes first");
+                              setTimeout(() => setErrorMessage(null), 5000);
                               return;
                             }
                             
-                            // Calculate estimated time based on number of selected apples
-                            // Estimate: ~0.6-0.8 seconds per apple (includes image loading with API calls)
-                            const estimatedSeconds = Math.ceil(selectedCount * 0.7);
-                            const estimatedMinutes = Math.floor(estimatedSeconds / 60);
-                            const remainingSeconds = estimatedSeconds % 60;
-                            
-                            let timeEstimate = "";
-                            if (estimatedMinutes > 0) {
-                              timeEstimate = `${estimatedMinutes} minute${estimatedMinutes > 1 ? 's' : ''}`;
-                              if (remainingSeconds > 0) {
-                                timeEstimate += ` ${remainingSeconds} second${remainingSeconds > 1 ? 's' : ''}`;
-                              }
-                            } else {
-                              timeEstimate = `${estimatedSeconds} second${estimatedSeconds > 1 ? 's' : ''}`;
-                            }
-                            
-                            const message = `Generating PDF for ${selectedCount} selected apple(s)... Estimated time: ${timeEstimate}. Please wait.`;
-                            
-                            if (setErrorMessage) {
-                              setErrorMessage(message);
-                            } else {
-                              alert(message);
-                            }
+                            const dataToExport = filtered.length > 0 ? filtered : apples;
+                            setErrorMessage(`Generating combined PDF for ${selectedCount} apple(s)... Please wait.`);
                             
                             try {
-                              await exportPDF(dataToExport, selectedRecords, API_BASE, setErrorMessage);
+                              await exportPDF(dataToExport, selectedRecords, API_BASE, setErrorMessage, getRecordId);
                             } catch (error) {
                               console.error("PDF error:", error);
-                              if (setErrorMessage) {
-                                setErrorMessage("Failed to generate PDF. Check console for details.");
-                                setTimeout(() => setErrorMessage(null), 5000);
-                              } else {
-                                alert("Failed to generate PDF. Check console for details.");
-                              }
+                              setErrorMessage("Failed to generate PDF. Check console for details.");
+                              setTimeout(() => setErrorMessage(null), 5000);
                             }
                           }}
                           style={{
@@ -1330,47 +1084,37 @@ export default function LibraryV2() {
                           onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                           onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
-                          PDF
+                          <div style={{ fontWeight: '500' }}>PDF (Combined)</div>
+                          <div style={{ fontSize: '11px', color: '#6b7280' }}>All selected in one PDF with images</div>
                         </button>
+                        
+                        {/* PDF Separate (ZIP) */}
                         <button
                           onClick={async () => {
                             setShowDownloadDropdown(false);
+                            const selectedCount = selectedRecords.size;
                             
-                            // Calculate estimated time based on number of apples
-                            const appleCount = filtered?.length || 0;
-                            // Estimate: ~0.6-0.8 seconds per apple (includes image loading with API calls)
-                            // Accounts for: data processing + API image fetch (2s timeout) + image loading (1s timeout)
-                            const estimatedSeconds = Math.ceil(appleCount * 0.7);
-                            const estimatedMinutes = Math.floor(estimatedSeconds / 60);
-                            const remainingSeconds = estimatedSeconds % 60;
-                            
-                            let timeEstimate = "";
-                            if (estimatedMinutes > 0) {
-                              timeEstimate = `${estimatedMinutes} minute${estimatedMinutes > 1 ? 's' : ''}`;
-                              if (remainingSeconds > 0) {
-                                timeEstimate += ` ${remainingSeconds} second${remainingSeconds > 1 ? 's' : ''}`;
-                              }
-                            } else {
-                              timeEstimate = `${estimatedSeconds} second${estimatedSeconds > 1 ? 's' : ''}`;
+                            if (selectedCount === 0) {
+                              setErrorMessage("To download PDFs, select apples using checkboxes first");
+                              setTimeout(() => setErrorMessage(null), 5000);
+                              return;
                             }
                             
-                            const message = `Generating PDF(All) for ${appleCount} apples... Estimated time: ${timeEstimate}. Please wait.`;
+                            // Get selected rows from filtered data
+                            const dataToExport = filtered.length > 0 ? filtered : apples;
+                            const selectedRows = dataToExport.filter((row, index) => {
+                              const recordId = getRecordId(row, index);
+                              return selectedRecords.has(recordId);
+                            });
                             
-                            if (setErrorMessage) {
-                              setErrorMessage(message);
-                            } else {
-                              alert(message);
-                            }
+                            setErrorMessage(`Generating ${selectedRows.length} separate PDFs... Please wait.`);
+                            
                             try {
-                              await exportPDFAll(filtered, API_BASE, setErrorMessage);
+                              await exportPDFAll(selectedRows, API_BASE, setErrorMessage);
                             } catch (error) {
                               console.error("PDF(All) error:", error);
-                              if (setErrorMessage) {
-                                setErrorMessage("Failed to generate PDF(All). Check console for details.");
-                                setTimeout(() => setErrorMessage(null), 5000);
-                              } else {
-                                alert("Failed to generate PDF(All). Check console for details.");
-                              }
+                              setErrorMessage("Failed to generate PDFs. Check console for details.");
+                              setTimeout(() => setErrorMessage(null), 5000);
                             }
                           }}
                           style={{
@@ -1387,7 +1131,8 @@ export default function LibraryV2() {
                           onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                           onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                         >
-                          PDF(All)
+                          <div style={{ fontWeight: '500' }}>PDF (Separate ZIP)</div>
+                          <div style={{ fontSize: '11px', color: '#6b7280' }}>Each apple as its own PDF in ZIP</div>
                         </button>
                       </div>
                     )}
@@ -1444,20 +1189,20 @@ export default function LibraryV2() {
                   )}
                   <div className="tp-toggle">
                     <div className={`tp-slider ${viewMode === "pictures" ? "right" : "left"}`}></div>
-                  <button
-                    type="button"
+                    <button
+                      type="button"
                       className={`tp-option ${viewMode === "table" ? "active" : ""}`}
                       onClick={() => setViewMode("table")}
-                  >
-                    Table
-                  </button>
-                  <button
-                    type="button"
+                    >
+                      Table
+                    </button>
+                    <button
+                      type="button"
                       className={`tp-option ${viewMode === "pictures" ? "active" : ""}`}
                       onClick={() => setViewMode("pictures")}
-                  >
-                    Pictures
-                  </button>
+                    >
+                      Pictures
+                    </button>
                   </div>
                 </div>
               </SearchBar>
@@ -1520,7 +1265,11 @@ export default function LibraryV2() {
               </div>
             ) : viewMode === 'table' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', overflow: 'hidden' }}>
+                {/* Pagination controls */}
                 <div style={{ 
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                   padding: '8px 12px', 
                   backgroundColor: '#f8fafc', 
                   borderRadius: '8px',
@@ -1529,14 +1278,89 @@ export default function LibraryV2() {
                   color: '#1e293b',
                   flexShrink: 0
                 }}>
-                  Showing {filtered.length} of {apples.length} records | {getAllColumns.length} columns
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span>
+                      Showing {filtered.length} of {pagination.total} records | Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    {query && (
+                      <span style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        backgroundColor: '#dbeafe',
+                        color: '#1e40af',
+                        padding: '4px 12px',
+                        borderRadius: '16px',
+                        fontSize: '13px'
+                      }}>
+                        Search: "{query}"
+                        <button
+                          onClick={handleClearSearch}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '0',
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}
+                          title="Clear search"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <button
+                      onClick={handlePrevPage}
+                      disabled={!pagination.hasLess}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '6px 12px',
+                        backgroundColor: pagination.hasLess ? '#667eea' : '#cbd5e1',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: pagination.hasLess ? 'pointer' : 'not-allowed',
+                        fontSize: '13px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <ChevronLeft size={16} />
+                      Previous
+                    </button>
+                    <button
+                      onClick={handleNextPage}
+                      disabled={!pagination.hasMore}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '6px 12px',
+                        backgroundColor: pagination.hasMore ? '#667eea' : '#cbd5e1',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: pagination.hasMore ? 'pointer' : 'not-allowed',
+                        fontSize: '13px',
+                        fontWeight: '500'
+                      }}
+                    >
+                      Next
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
                 </div>
-                <div className="av-table-card" style={{ flex: 1, minHeight: 0 }}>
+                
+                {/* Simple scrollable table (no react-window) */}
+                <div className="av-table-card" style={{ flex: 1, minHeight: 0, overflow: 'auto', maxHeight: '600px' }}>
                   <table className="av-table" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '60px', textAlign: 'center', position: 'sticky', left: 0, zIndex: 3, backgroundColor: '#0f172a', padding: '12px 4px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                      <tr>
+                        <th style={{ width: '60px', textAlign: 'center', backgroundColor: '#0f172a', padding: '12px 4px' }}>
                           <input
                             type="checkbox"
                             checked={isAllSelected}
@@ -1545,90 +1369,76 @@ export default function LibraryV2() {
                             }}
                             onChange={handleSelectAll}
                             title="Select All"
-                            style={{ margin: 0 }}
                           />
-                        </div>
-                      </th>
-                      {getAllColumns.map((excelCol, idx) => {
-                        // Columns that should have consistent width (no long text expansion)
-                        const longTextColumns = ["CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "COOPERATOR", "PEDIGREE DESCRIPTION", "COOPERATOR_NEW", "AVAILABILITY STATUS "];
-                        const shouldConstrain = longTextColumns.includes(excelCol);
-                        
-                        // Columns that should be center-aligned (numeric/ID columns)
-                        const centerAlignedColumns = ["ACNO"];
-                        const shouldCenterAlign = centerAlignedColumns.includes(excelCol);
+                        </th>
+                        {getAllColumns.map((excelCol) => {
+                          const shouldConstrain = longTextColumns.includes(excelCol);
+                          const centerAlignedColumns = ["ACNO"];
+                          const shouldCenterAlign = centerAlignedColumns.includes(excelCol);
+                          
+                          return (
+                            <th 
+                              key={excelCol} 
+                              style={{ 
+                                minWidth: '120px',
+                                maxWidth: shouldConstrain ? '180px' : undefined,
+                                whiteSpace: 'nowrap',
+                                padding: '12px 10px',
+                                fontSize: '12px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                textAlign: shouldCenterAlign ? 'center' : 'left',
+                                backgroundColor: '#0f172a',
+                                color: 'white'
+                              }}
+                            >
+                              {excelCol}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((a, index) => {
+                        const recordId = getRecordId(a, index);
+                        const isSelected = selectedRecords.has(recordId);
                         
                         return (
-                          <th 
-                            key={excelCol} 
+                          <tr 
+                            key={recordId}
                             style={{ 
-                              minWidth: '120px',
-                              maxWidth: shouldConstrain ? '180px' : undefined, // Constrain width for long text columns (same as cells)
-                              whiteSpace: 'nowrap',
-                              padding: '12px 10px',
-                              fontSize: '12px',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              textAlign: shouldCenterAlign ? 'center' : 'left' // Center align ACNO header
+                              backgroundColor: isSelected ? 'rgba(0, 123, 255, 0.1)' : (index % 2 === 0 ? '#fff' : '#f9fafb'),
+                              cursor: 'pointer' 
+                            }}
+                            onClick={(e) => {
+                              if (e.target.closest('input[type="checkbox"]') || e.target.closest('[data-icon="trash"]')) {
+                                return;
+                              }
+                              navigate(`/apple-detail/${recordId}`, { state: { apple: a } });
                             }}
                           >
-                            {excelCol}
-                      </th>
+                            <td style={{ textAlign: 'center', padding: '10px 4px' }} onClick={(e) => e.stopPropagation()}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleSelectRecord(recordId)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                <Trash2 
+                                  size={16} 
+                                  style={{ color: '#dc3545', cursor: 'pointer' }} 
+                                  data-icon="trash" 
+                                  onClick={() => handleDeleteRecord(recordId)} 
+                                />
+                              </div>
+                            </td>
+                            {getAllColumns.map((col) => renderCell(getFieldValue(a, col), col))}
+                          </tr>
                         );
                       })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(filtered && filtered.length > 0) ? filtered.map((a, i) => {
-                      const recordId = getRecordId(a, i);
-                      const isSelected = selectedRecords.has(recordId);
-                      return (
-                        <tr key={recordId} style={{ backgroundColor: isSelected ? 'rgba(0, 123, 255, 0.1)' : '', cursor: 'pointer' }}
-                          onClick={(e) => {
-                            // prevent navigation if clicking on the checkbox or a control inside the first cell
-                            if (e.target.closest('input[type="checkbox"]') || e.target.closest('[data-icon="trash"]')) {
-                              return;
-                            }
-                            navigate(`/apple-detail/${recordId}`, { state: { apple: a } });
-                          }}
-                        >
-                          <td style={{ 
-                            textAlign: 'center', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: '0',
-                            position: 'sticky',
-                            left: 0,
-                            zIndex: 2,
-                            backgroundColor: isSelected ? 'rgba(0, 123, 255, 0.1)' : '#fff',
-                            width: '60px',
-                            padding: '10px 4px',
-                            minWidth: '60px',
-                            maxWidth: '60px'
-                          }}
-                            onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleSelectRecord(recordId)}
-                              style={{ cursor: 'pointer', margin: 0, marginRight: '4px' }}
-                            />
-                            <Trash2 size={16} style={{ color: '#dc3545', cursor: 'pointer', flexShrink: 0 }} data-icon="trash" onClick={() => handleDeleteRecord(recordId)} />
-                          </td>
-                          {getAllColumns.map((col) => {
-                            const value = getFieldValue(a, col);
-                            return renderCell(value, col);
-                          })}
-                        </tr>
-                      );
-                    }) : (
-                      <tr>
-                        <td className="av-empty" colSpan={getAllColumns.length + 1}>No results.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ) : (
@@ -1706,52 +1516,32 @@ export default function LibraryV2() {
                       {filtered.map((a, i) => {
                         const recordId = getRecordId(a, i);
                         const isSelected = selectedRecords.has(recordId);
+                        const title = getFieldValue(a, 'CULTIVAR NAME') || (a.cultivar_name ?? a['CULTIVAR NAME'] ?? a.name ?? 'Unknown');
+                        const acc = getFieldValue(a, 'ACCESSION') || (a.accession ?? a.ACCESSION ?? '');
                         
-                        // Get title from multiple sources including metadata
-                        const title = getFieldValue(a, 'CULTIVAR NAME') || 
-                                     (a.cultivar_name ?? 
-                                     a['CULTIVAR NAME'] ?? 
-                                     a.name ?? 
-                                     'Unknown');
-                        
-                        // Get accession from multiple sources including metadata
-                        const acc = getFieldValue(a, 'ACCESSION') || 
-                                  (a.accession ?? 
-                                  a.ACCESSION ?? 
-                                  '');
-                        
-                        // Handle multiple field name formats for images
-                        // Also check metadata for IMAGES column
                         let imgs = [];
-                        
-                        // Check metadata first (where Excel columns are stored)
                         if (a.metadata && a.metadata['IMAGES']) {
                           const metadataImages = a.metadata['IMAGES'];
                           if (Array.isArray(metadataImages)) {
                             imgs = metadataImages;
                           } else if (typeof metadataImages === 'string') {
-                            // If it's a string, try to parse it (comma-separated or JSON)
                             try {
                               const parsed = JSON.parse(metadataImages);
                               if (Array.isArray(parsed)) {
                                 imgs = parsed;
                               }
                             } catch {
-                              // If not JSON, treat as comma-separated string
                               imgs = metadataImages.split(',').map(img => img.trim()).filter(img => img);
                             }
                           }
                         }
                         
-                        // Fallback to direct fields if metadata doesn't have images
                         if (imgs.length === 0) {
                           imgs = (a.images && Array.isArray(a.images)) ? a.images :
-                                   (a.Images && Array.isArray(a.Images)) ? a.Images :
-                                   (a.IMAGE && Array.isArray(a.IMAGE)) ? a.IMAGE :
-                                   (a['images'] && Array.isArray(a['images'])) ? a['images'] : [];
+                                (a.Images && Array.isArray(a.Images)) ? a.Images :
+                                (a.IMAGE && Array.isArray(a.IMAGE)) ? a.IMAGE :
+                                (a['images'] && Array.isArray(a['images'])) ? a['images'] : [];
                         }
-                        
-                        // Note: If images array is empty, the AppleImage component will try fallback URLs
                         
                         const first = imgs.length > 0 ? imgs[0] : null;
                         let imageUrl = null;
@@ -1831,6 +1621,60 @@ export default function LibraryV2() {
                         );
                       })}
                     </div>
+                    
+                    {/* Pagination for pictures view */}
+                    <div style={{ 
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: '12px',
+                      marginTop: '24px',
+                      padding: '16px'
+                    }}>
+                      <button
+                        onClick={handlePrevPage}
+                        disabled={!pagination.hasLess}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '10px 20px',
+                          backgroundColor: pagination.hasLess ? '#667eea' : '#cbd5e1',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: pagination.hasLess ? 'pointer' : 'not-allowed',
+                          fontSize: '14px',
+                          fontWeight: '500'
+                        }}
+                      >
+                        <ChevronLeft size={18} />
+                        Previous
+                      </button>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#1e293b' }}>
+                        Page {pagination.page} of {pagination.totalPages}
+                      </span>
+                      <button
+                        onClick={handleNextPage}
+                        disabled={!pagination.hasMore}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '10px 20px',
+                          backgroundColor: pagination.hasMore ? '#667eea' : '#cbd5e1',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: pagination.hasMore ? 'pointer' : 'not-allowed',
+                          fontSize: '14px',
+                          fontWeight: '500'
+                        }}
+                      >
+                        Next
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="av-nopics">No pictures to show.</div>
@@ -1846,7 +1690,7 @@ export default function LibraryV2() {
             position: 'fixed',
             top: '20px',
             right: '20px',
-            backgroundColor: '#dc3545',
+            backgroundColor: errorMessage.includes('success') || errorMessage.includes('Downloaded') ? '#28a745' : '#dc3545',
             color: 'white',
             padding: '16px 20px',
             borderRadius: '8px',
@@ -1894,7 +1738,10 @@ export default function LibraryV2() {
   );
 }
 
-// Helper function to get record ID (same as component's getRecordId)
+// ============================================================================
+// EXPORT FUNCTIONS
+// ============================================================================
+
 function getRecordIdForExport(record, index) {
   if (record._id) return record._id;
   if (record.id) return record.id;
@@ -1906,14 +1753,11 @@ function getRecordIdForExport(record, index) {
   return `record_${index}`;
 }
 
-// Helper to get field value from record (same logic as getFieldValue in component)
 function getFieldValueForExport(record, excelColumnName) {
-  // Try exact Excel column name in metadata first (most common case)
   if (record.metadata && record.metadata[excelColumnName] !== undefined && record.metadata[excelColumnName] !== null && record.metadata[excelColumnName] !== '') {
     return record.metadata[excelColumnName];
   }
   
-  // Try with trimmed version (handle trailing spaces)
   const trimmedColumnName = excelColumnName.trim();
   if (trimmedColumnName !== excelColumnName) {
     if (record.metadata && record.metadata[trimmedColumnName] !== undefined && record.metadata[trimmedColumnName] !== null && record.metadata[trimmedColumnName] !== '') {
@@ -1921,12 +1765,10 @@ function getFieldValueForExport(record, excelColumnName) {
     }
   }
   
-  // Try exact Excel column name in direct fields
   if (record[excelColumnName] !== undefined && record[excelColumnName] !== null && record[excelColumnName] !== '') {
     return record[excelColumnName];
   }
   
-  // Try common field mappings
   const fieldMappings = {
     'CULTIVAR NAME': ['cultivar_name', 'CULTIVAR NAME'],
     'ACNO': ['acno', 'ACNO'],
@@ -1954,11 +1796,9 @@ function getFieldValueForExport(record, excelColumnName) {
   return '';
 }
 
-// Transform record to Excel format with all 54 columns
 function transformRecordToExcelFormat(record, columnOrder) {
   const transformed = {};
   
-  // Map each Excel column to its value
   columnOrder.forEach(columnName => {
     const value = getFieldValueForExport(record, columnName);
     transformed[columnName] = value !== null && value !== undefined ? String(value) : '';
@@ -1967,133 +1807,90 @@ function transformRecordToExcelFormat(record, columnOrder) {
   return transformed;
 }
 
-async function exportCSV(rows, selectedIds = null, setErrorMessage = null) {
+async function exportCSV(rows, selectedIds = null, setErrorMessage = null, getRecordIdFn = null) {
   if (!rows?.length) {
     if (setErrorMessage) {
       setErrorMessage("No rows to export.");
       setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("No rows to export.");
     }
     return;
   }
 
   if (!selectedIds || selectedIds.size === 0) {
     if (setErrorMessage) {
-      setErrorMessage("To download, select the apples");
+      setErrorMessage("To download, select the apples first by clicking the checkboxes");
       setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("To download, select the apples");
     }
     return;
   }
 
-  // Filter selected records
-  let rowsToExport = rows.filter((row, index) => {
-    const recordId = getRecordIdForExport(row, index);
-    return selectedIds.has(recordId);
-  });
+  // Use provided function or fallback to direct matching
+  let rowsToExport;
+  if (getRecordIdFn) {
+    rowsToExport = rows.filter((row, index) => {
+      const recordId = getRecordIdFn(row, index);
+      return selectedIds.has(recordId);
+    });
+  } else {
+    // Fallback: Match by _id directly since that's what selectedRecords contains
+    rowsToExport = rows.filter((row) => {
+      if (row._id && selectedIds.has(row._id)) return true;
+      if (row.id && selectedIds.has(row.id)) return true;
+      
+      const acno = row.acno ?? '';
+      const accession = row.accession ?? '';
+      if (acno || accession) {
+        const compositeId = `${acno}_${accession}`;
+        if (selectedIds.has(compositeId)) return true;
+      }
+      
+      return false;
+    });
+  }
+
+  console.log(`📊 CSV Export: ${rowsToExport.length} selected from ${rows.length} filtered rows`);
 
   if (rowsToExport.length === 0) {
     if (setErrorMessage) {
-      setErrorMessage("No selected records to export. Please select at least one record.");
+      setErrorMessage("No selected records found in current view.");
       setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("No selected records to export. Please select at least one record.");
     }
     return;
   }
 
-  // Define exact column order (all 54 columns from Excel)
   const columnOrder = [
-    "SITE ID",
-    "PREFIX (ACP)",
-    "ACNO",
-    "ACCESSION",
-    "CULTIVAR NAME",
-    "FAMILY",
-    "HABITAT",
-    "BREEDER OR COLLECTOR",
-    "GENUS",
-    "SPECIES",
-    "INVENTORY TYPE",
-    "INVENTORY MAINTENANCE POLICY",
-    "PLANT TYPE",
-    "LIFE FORM",
-    "IS DISTRIBUTABLE?",
-    "FRUITSHAPE 115057",
-    "FRUITLGTH 115156",
-    "FRUITWIDTH 115157",
-    "FRTWEIGHT 115121",
-    "FRTSTEMTHK 115127",
-    "SEEDCOLOR 115086",
-    "SSIZE Quantity of Seed",
-    "SEEDLENGTH 115163",
-    "SEEDWIDTH 115164",
-    "SEEDNUMBER 115087",
-    "FRTTEXTURE 115123",
-    "FRTSTMLGTH 115158",
-    "SEEDSHAPE 115167",
-    "FRTFLSHOXI 115129",
-    "FIRST BLOOM DATE",
-    "FULL BLOOM DATE",
-    "COLOUR",
-    "DENSITY",
-    "FIREBLIGHT RATING",
-    "TAXON",
-    "CMT",
-    "NARATIVEKEYWORD",
-    "FULL NARATIVE",
-    "PEDIGREE DESCRIPTION",
-    "AVAILABILITY STATUS ",
-    "PROVINCE/STATE",
-    "COUNTRY",
-    "LOCATION SECTION 1",
-    "LOCATION SECTION 2",
-    "LOCATION SECTION 3",
-    "LOCATION SECTION 4",
-    "COOPERATOR",
-    "IPR TYPE",
-    "LABEL NAME",
-    "LEVEL OF IMPROVEMENT",
-    "RELEASED DATE",
-    "RELEASED DATE FORMAT",
-    "COOPERATOR_NEW",
-    "IMAGES"
+    "SITE ID", "PREFIX (ACP)", "ACNO", "ACCESSION", "CULTIVAR NAME", "FAMILY", "HABITAT",
+    "BREEDER OR COLLECTOR", "GENUS", "SPECIES", "INVENTORY TYPE", "INVENTORY MAINTENANCE POLICY",
+    "PLANT TYPE", "LIFE FORM", "IS DISTRIBUTABLE?", "FRUITSHAPE 115057", "FRUITLGTH 115156",
+    "FRUITWIDTH 115157", "FRTWEIGHT 115121", "FRTSTEMTHK 115127", "SEEDCOLOR 115086",
+    "SSIZE Quantity of Seed", "SEEDLENGTH 115163", "SEEDWIDTH 115164", "SEEDNUMBER 115087",
+    "FRTTEXTURE 115123", "FRTSTMLGTH 115158", "SEEDSHAPE 115167", "FRTFLSHOXI 115129",
+    "FIRST BLOOM DATE", "FULL BLOOM DATE", "COLOUR", "DENSITY", "FIREBLIGHT RATING", "TAXON",
+    "CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "PEDIGREE DESCRIPTION", "AVAILABILITY STATUS ",
+    "PROVINCE/STATE", "COUNTRY", "LOCATION SECTION 1", "LOCATION SECTION 2", "LOCATION SECTION 3",
+    "LOCATION SECTION 4", "COOPERATOR", "IPR TYPE", "LABEL NAME", "LEVEL OF IMPROVEMENT",
+    "RELEASED DATE", "RELEASED DATE FORMAT", "COOPERATOR_NEW", "IMAGES"
   ];
 
-  // Transform all records to Excel format with all 54 columns
   const transformedRows = rowsToExport.map(record => transformRecordToExcelFormat(record, columnOrder));
 
-  // Create CSV content - Numbers applies grey to first column when importing CSV
-  // This is a Numbers behavior that cannot be controlled via CSV format
-  // CSV files are plain text and don't support cell formatting
   const escapeCSVValue = (value) => {
     if (value === null || value === undefined || value === '') {
-      return '""'; // Return quoted empty string to ensure consistent formatting
+      return '""';
     }
     const stringValue = String(value);
-    // Always quote values to ensure Numbers treats them as text (prevents special formatting)
-    // Escape any existing quotes by doubling them
     return `"${stringValue.replace(/"/g, '""')}"`;
   };
 
-  // Build CSV header row (without empty first column)
   const csvHeader = columnOrder.map(col => escapeCSVValue(col)).join(',');
-  
-  // Build CSV data rows (without empty first column)
   const csvRows = transformedRows.map(row => {
     return columnOrder.map(col => escapeCSVValue(row[col] || '')).join(',');
   });
   
-  // Combine header and rows
   const csvContent = [csvHeader, ...csvRows].join('\n');
-  
-  // Add UTF-8 BOM to ensure proper encoding
   const BOM = '\uFEFF';
   const csvWithBOM = BOM + csvContent;
   
-  // Create and download CSV file
   const blob = new Blob([csvWithBOM], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
@@ -2104,1333 +1901,620 @@ async function exportCSV(rows, selectedIds = null, setErrorMessage = null) {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+  
+  if (setErrorMessage) {
+    setErrorMessage(`Successfully exported ${rowsToExport.length} records to CSV`);
+    setTimeout(() => setErrorMessage(null), 3000);
+  }
 }
 
-async function downloadSelectedImages(rows, selectedIds, apiBase) {
-  if (!selectedIds || selectedIds.size === 0) {
-    return alert("Please select at least one apple to download images.");
+async function exportPDF(rows, selectedIds = null, apiBase, setErrorMessage = null, getRecordIdFn = null) {
+  if (!rows?.length || !selectedIds || selectedIds.size === 0) {
+    if (setErrorMessage) {
+      setErrorMessage("To download PDF, select the apples first");
+      setTimeout(() => setErrorMessage(null), 5000);
+    }
+    return;
   }
 
-  const selectedRows = rows.filter((row, index) => {
-    const recordId = getRecordIdForExport(row, index);
-    return selectedIds.has(recordId);
-  });
+  // Filter selected rows using provided function or fallback
+  let selectedRows;
+  if (getRecordIdFn) {
+    selectedRows = rows.filter((row, index) => {
+      const recordId = getRecordIdFn(row, index);
+      return selectedIds.has(recordId);
+    });
+  } else {
+    selectedRows = rows.filter((row) => {
+      if (row._id && selectedIds.has(row._id)) return true;
+      if (row.id && selectedIds.has(row.id)) return true;
+      const acno = row.acno ?? '';
+      const accession = row.accession ?? '';
+      if (acno || accession) {
+        const compositeId = `${acno}_${accession}`;
+        if (selectedIds.has(compositeId)) return true;
+      }
+      return false;
+    });
+  }
+
+  console.log(`📄 PDF Export: ${selectedRows.length} selected from ${rows.length} filtered rows`);
 
   if (selectedRows.length === 0) {
-    return alert("No selected records found.");
+    if (setErrorMessage) {
+      setErrorMessage("No selected records found in current view.");
+      setTimeout(() => setErrorMessage(null), 5000);
+    }
+    return;
   }
 
-  const imagesToDownload = [];
-  for (const row of selectedRows) {
-    const imgs = (row.images && Array.isArray(row.images)) ? row.images : [];
-    const cultivarName = (row.cultivar_name ?? row.name ?? 'Unknown').replace(/[^a-zA-Z0-9]/g, '_');
-    const accession = (row.accession ?? '').replace(/[^a-zA-Z0-9]/g, '_');
+  try {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF();
+    
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.height;
+    const margin = 20;
+    const lineHeight = 7;
 
-    for (let i = 0; i < imgs.length; i++) {
-      const imgPath = imgs[i];
-      const imageUrl = imgPath.startsWith('/images/') || imgPath.startsWith('/data/')
-        ? `${apiBase}${imgPath}`
-        : imgPath;
+    // Helper function to add section
+    const addSection = (doc, title, data, yPos) => {
+      const nonEmptyData = Object.entries(data).filter(([key, value]) => 
+        value && value !== 'N/A' && value.toString().trim() !== ''
+      );
+      
+      if (nonEmptyData.length === 0) return yPos;
+      
+      if (yPos > pageHeight - 40) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFontSize(14);
+      doc.setTextColor(44, 62, 80);
+      doc.text(title, margin, yPos);
+      yPos += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(85, 85, 85);
+      
+      nonEmptyData.forEach(([key, value]) => {
+        if (yPos > pageHeight - 20) {
+          doc.addPage();
+          yPos = 20;
+        }
+        const formattedKey = key.replace(/_/g, ' ').toUpperCase();
+        const text = `${formattedKey}: ${value || 'N/A'}`;
+        
+        const splitText = doc.splitTextToSize(text, pageWidth - 2 * margin - 10);
+        splitText.forEach(line => {
+          if (yPos > pageHeight - 20) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.text(line, margin + 5, yPos);
+          yPos += lineHeight;
+        });
+      });
+      
+      return yPos + 5;
+    };
 
-      const ext = imgPath.match(/\.(jpg|jpeg|png|webp|gif)$/i)?.[0] || '.jpg';
-      const filename = `${cultivarName}_${accession}_${i + 1}${ext}`;
+    // Helper to add apple data to PDF
+    const addAppleToPDF = async (doc, apple, startNewPage = false) => {
+      if (startNewPage) {
+        doc.addPage();
+      }
+      
+      let yPosition = 20;
+      
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(231, 111, 81);
+      doc.text(`Apple: ${apple.cultivar_name || apple.name || 'Unknown'}`, margin, yPosition);
+      yPosition += 10;
+      
+      // Accession
+      doc.setFontSize(12);
+      doc.setTextColor(52, 73, 94);
+      const accession = apple.accession || '';
+      doc.text(`Accession: ${accession}`, margin, yPosition);
+      yPosition += 8;
+      
+      // Line
+      doc.setDrawColor(231, 111, 81);
+      doc.setLineWidth(0.5);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
 
-      imagesToDownload.push({ url: imageUrl, filename });
+      // Add sections
+      yPosition = addSection(doc, 'IDENTITY & INVENTORY', {
+        'Accession Number': apple.acno || '',
+        'Accession': accession,
+        'Cultivar Name': apple.cultivar_name || '',
+        'Site ID': apple.site_id || '',
+        'Prefix (ACP)': apple.prefix_acp || '',
+        'Label Name': apple.label_name || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'TAXONOMY', {
+        'Family': apple.family || '',
+        'Genus': apple.e_genus || '',
+        'Species': apple.e_species || '',
+        'Taxon': apple.taxon || '',
+        'Plant Type': apple.plant_type || '',
+        'Life Form': apple.life_form || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'GEOGRAPHY & ORIGIN', {
+        'Country': apple.e_origin_country || apple.country || '',
+        'Province/State': apple.e_origin_province || apple.province_state || '',
+        'Habitat': apple.habitat || '',
+        'Location 1': apple.location_section_1 || '',
+        'Location 2': apple.location_section_2 || '',
+        'Location 3': apple.location_section_3 || '',
+        'Location 4': apple.location_section_4 || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'PEOPLE & ORGANIZATIONS', {
+        'Breeder or Collector': apple.breeder_or_collector || '',
+        'Cooperator': apple.cooperator || '',
+        'Cooperator New': apple.cooperator_new || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'FRUIT CHARACTERISTICS', {
+        'Fruit Shape': apple.fruitshape_115057 || '',
+        'Fruit Length': apple.fruitlgth_115156 || '',
+        'Fruit Width': apple.fruitwidth_115157 || '',
+        'Fruit Weight': apple.frtweight_115121 || '',
+        'Fruit Texture': apple.frttexture_115123 || '',
+        'Colour': apple.colour || '',
+        'Density': apple.density || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'SEED CHARACTERISTICS', {
+        'Seed Color': apple.seedcolor_115086 || '',
+        'Seed Size': apple.ssize_quantity_of_seed || '',
+        'Seed Length': apple.seedlength_115163 || '',
+        'Seed Width': apple.seedwidth_115164 || '',
+        'Seed Number': apple.seednumber_115087 || '',
+        'Seed Shape': apple.seedshape_115167 || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'DESCRIPTIVE INFORMATION', {
+        'Comments': apple.cmt || '',
+        'Narrative Keyword': apple.narativekeyword || '',
+        'Pedigree Description': apple.pedigree_description || ''
+      }, yPosition);
+
+      yPosition = addSection(doc, 'STATUS & RELEASE', {
+        'Availability Status': apple.availability_status || '',
+        'Level of Improvement': apple.level_of_improvement || '',
+        'Released Date': apple.released_date || ''
+      }, yPosition);
+
+      // Add images if available
+      const images = apple.images || [];
+      if (images.length > 0) {
+        if (yPosition > pageHeight - 60) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        
+        doc.setFontSize(14);
+        doc.setTextColor(44, 62, 80);
+        doc.text('Images', margin, yPosition);
+        yPosition += 15;
+
+        for (let i = 0; i < Math.min(images.length, 4); i++) {
+          try {
+            let imgUrl = images[i];
+            if (imgUrl.startsWith('/')) {
+              imgUrl = `${apiBase}${imgUrl}`;
+            }
+
+            // Load image
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            
+            await new Promise((resolve, reject) => {
+              img.onload = resolve;
+              img.onerror = reject;
+              img.src = imgUrl;
+            });
+
+            const maxWidth = (pageWidth - 2 * margin - 10) / 2;
+            const maxHeight = 80;
+            
+            let imgWidth = img.width;
+            let imgHeight = img.height;
+            
+            if (imgWidth > maxWidth) {
+              const ratio = maxWidth / imgWidth;
+              imgWidth = maxWidth;
+              imgHeight = imgHeight * ratio;
+            }
+            if (imgHeight > maxHeight) {
+              const ratio = maxHeight / imgHeight;
+              imgHeight = maxHeight;
+              imgWidth = imgWidth * ratio;
+            }
+
+            if (yPosition + imgHeight > pageHeight - 20) {
+              doc.addPage();
+              yPosition = 20;
+            }
+
+            // Convert to base64
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+            doc.addImage(dataUrl, 'JPEG', margin + (i % 2) * (maxWidth + 5), yPosition, imgWidth, imgHeight);
+            
+            if (i % 2 === 1 || i === images.length - 1) {
+              yPosition += imgHeight + 10;
+            }
+          } catch (imgError) {
+            console.warn('Could not load image:', images[i]);
+          }
+        }
+      }
+
+      return yPosition;
+    };
+
+    // Process all selected apples
+    for (let i = 0; i < selectedRows.length; i++) {
+      await addAppleToPDF(doc, selectedRows[i], i > 0);
+      
+      if (setErrorMessage && selectedRows.length > 5) {
+        setErrorMessage(`Processing ${i + 1}/${selectedRows.length} apples...`);
+      }
+    }
+
+    // Save the combined PDF
+    doc.save(`appleverse_${selectedRows.length}_apples.pdf`);
+
+    if (setErrorMessage) {
+      setErrorMessage(`Successfully exported ${selectedRows.length} apples to PDF`);
+      setTimeout(() => setErrorMessage(null), 3000);
+    }
+  } catch (error) {
+    console.error('PDF export error:', error);
+    if (setErrorMessage) {
+      setErrorMessage(`PDF export failed: ${error.message}`);
+      setTimeout(() => setErrorMessage(null), 5000);
     }
   }
-
-  if (imagesToDownload.length === 0) {
-    return alert("No images found for selected apples.");
-  }
-
-  for (const { url, filename } of imagesToDownload) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (error) {
-      console.error(`Failed to download ${filename}:`, error);
-    }
-  }
-
-  alert(`Downloaded ${imagesToDownload.length} image(s) from ${selectedRows.length} selected apple(s).`);
 }
 
-async function exportPDF(rows, selectedIds = null, apiBase, setErrorMessage = null) {
+// Helper to get field value with multiple fallbacks
+function getAppleField(apple, ...fieldNames) {
+  for (const field of fieldNames) {
+    // Check direct field
+    if (apple[field] !== undefined && apple[field] !== null && apple[field] !== '') {
+      return String(apple[field]).trim();
+    }
+    // Check metadata
+    if (apple.metadata) {
+      const value = apple.metadata[field];
+      if (value !== undefined && value !== null && value !== '') {
+        return String(value).trim();
+      }
+    }
+  }
+  return '';
+}
+
+// Export separate PDFs (one per apple) as a ZIP file
+async function exportPDFAll(rows, apiBase, setErrorMessage = null) {
   if (!rows?.length) {
     if (setErrorMessage) {
       setErrorMessage("No rows to export.");
       setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("No rows to export.");
     }
     return;
   }
 
-  if (!selectedIds || selectedIds.size === 0) {
-    if (setErrorMessage) {
-      setErrorMessage("To download, select the apples");
-      setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("To download, select the apples");
-    }
-    return;
-  }
-
-  let rowsToExport = rows.filter((row, index) => {
-    const recordId = getRecordIdForExport(row, index);
-    return selectedIds.has(recordId);
-  });
-
-  if (rowsToExport.length === 0) {
-    if (setErrorMessage) {
-      setErrorMessage("No selected records to export. Please select at least one record.");
-      setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert("No selected records to export. Please select at least one record.");
-    }
-    return;
-  }
+  console.log(`📦 PDF(All) Export: Generating ${rows.length} separate PDFs`);
 
   try {
-    const { jsPDF } = await import("jspdf");
-    const JSZip = (await import("jszip")).default;
+    const { jsPDF } = await import('jspdf');
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
 
-    const pdfs = [];
-    const totalApples = rowsToExport.length;
-    
-    // Update progress function
-    const updateProgress = (current, total) => {
-      const percent = Math.round((current / total) * 100);
-      if (setErrorMessage) {
-        setErrorMessage(`Generating PDF... ${current}/${total} apples (${percent}%)`);
-      }
-      console.log(`PDF: Progress ${current}/${total} (${percent}%)`);
-    };
-    
-    console.log(`PDF: Starting export with ${totalApples} selected apple(s)...`);
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const margin = 20;
+    const lineHeight = 7;
 
-    for (let appleIndex = 0; appleIndex < rowsToExport.length; appleIndex++) {
-      const row = rowsToExport[appleIndex];
+    // Helper function to add section
+    const addSection = (doc, title, data, yPos) => {
+      const nonEmptyData = Object.entries(data).filter(([key, value]) => 
+        value && value !== 'N/A' && value.toString().trim() !== ''
+      );
       
-      // Update progress: every apple if <= 10, every 5 if > 10, or on last apple
-      if (totalApples <= 10 || appleIndex % 5 === 0 || appleIndex === rowsToExport.length - 1) {
-        updateProgress(appleIndex + 1, totalApples);
-      }
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 15;
-      const bottomMargin = 20; // Extra margin at bottom to prevent text cutoff
-      const leftWidth = pageWidth * 0.50; // Increased from 0.45 to give more space for text
-      const rightWidth = pageWidth * 0.45;
-      const rightStart = pageWidth * 0.52;
-
-      let yPos = margin;
-
-      // Helper to get field value from record (checks metadata and direct fields)
-      const getPDFFieldValue = (record, fieldNames) => {
-        // Check metadata first (where Excel columns are stored)
-        if (record.metadata) {
-          // Handle both Map and plain object formats
-          const isMap = record.metadata instanceof Map;
-          const getMetadataValue = (key) => {
-            if (isMap) {
-              return record.metadata.get(key);
-            } else {
-              return record.metadata[key];
-            }
-          };
-          
-          const getMetadataKeys = () => {
-            if (isMap) {
-              return Array.from(record.metadata.keys());
-            } else {
-              return Object.keys(record.metadata);
-            }
-          };
-          
-          for (const field of fieldNames) {
-            // Try exact match
-            let value = getMetadataValue(field);
-            if (value !== undefined && value !== null && value !== '') {
-              return String(value);
-            }
-            
-            // Try with trimmed version (handle trailing spaces in column names)
-            const trimmedField = field.trim();
-            if (trimmedField !== field) {
-              value = getMetadataValue(trimmedField);
-              if (value !== undefined && value !== null && value !== '') {
-                return String(value);
-              }
-            }
-            
-            // Try case-insensitive match in metadata keys
-            const metadataKeys = getMetadataKeys();
-            for (const key of metadataKeys) {
-              if (key && String(key).trim().toLowerCase() === field.trim().toLowerCase()) {
-                value = getMetadataValue(key);
-                if (value !== undefined && value !== null && value !== '') {
-                  return String(value);
-                }
-              }
-            }
-          }
-        }
-        // Check direct fields
-        for (const field of fieldNames) {
-          const value = record[field];
-          if (value !== undefined && value !== null && value !== '') {
-            return String(value);
-          }
-        }
-        return '';
-      };
-
-      doc.setFontSize(18);
-      doc.setTextColor(231, 76, 60);
-      const cultivarName = getPDFFieldValue(row, ['CULTIVAR NAME', 'cultivar_name', 'name', 'cultivar']) || 'Unknown';
-      doc.text(cultivarName, margin, yPos);
-      yPos += 10;
-
-      doc.setFontSize(12);
-      doc.setTextColor(52, 73, 94);
-      const accession = getPDFFieldValue(row, ['ACCESSION', 'accession']) || '';
-      doc.text(`Accession: ${accession}`, margin, yPos);
-      yPos += 8;
-
-      doc.setDrawColor(231, 76, 60);
-      doc.setLineWidth(0.5);
-      doc.line(margin, yPos, leftWidth + margin, yPos);
-      yPos += 8;
-
-      // Get images first (before rendering data columns)
-      let imgs = (row.images && Array.isArray(row.images)) ? row.images :
-                 (row.Images && Array.isArray(row.Images)) ? row.Images :
-                 (row.IMAGE && Array.isArray(row.IMAGE)) ? row.IMAGE :
-                 (row['images'] && Array.isArray(row['images'])) ? row['images'] : [];
+      if (nonEmptyData.length === 0) return yPos;
       
-      // Format database images to full URLs
-      if (imgs.length > 0) {
-        imgs = imgs.map(img => {
-          const imgPath = String(img).trim();
-          if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
-            return imgPath;
-          } else if (imgPath.startsWith('/images/') || imgPath.startsWith('/data/')) {
-            return `${apiBase}${imgPath}`;
-          } else if (imgPath.startsWith('images/') || imgPath.startsWith('data/')) {
-            return `${apiBase}/${imgPath}`;
-          } else {
-            return `${apiBase}/images/${imgPath}`;
-          }
-        });
-      }
-      
-      // Always try to fetch from backend API as well
-      if (accession) {
-        try {
-          const response = await fetch(`${apiBase}/api/apples/find-image/${encodeURIComponent(accession)}`);
-          const data = await response.json();
-          if (data.success && data.images && data.images.length > 0) {
-            const apiImgs = data.images.map(img => {
-              const pathParts = img.split('/');
-              if (pathParts.length > 0) {
-                const filename = pathParts[pathParts.length - 1];
-                const encodedFilename = encodeURIComponent(filename);
-                pathParts[pathParts.length - 1] = encodedFilename;
-                return `${apiBase}${pathParts.join('/')}`;
-              }
-              return `${apiBase}${img}`;
-            });
-            
-            const seenUrls = new Set(imgs.map(url => url.toLowerCase()));
-            apiImgs.forEach(apiImg => {
-              if (!seenUrls.has(apiImg.toLowerCase())) {
-                imgs.push(apiImg);
-                seenUrls.add(apiImg.toLowerCase());
-              }
-            });
-          }
-        } catch (error) {
-          console.error(`PDF: Error fetching images for ${accession}:`, error);
-        }
-      }
-      
-      // Render images at top right (fixed position)
-      let imageY = margin + 10; // Start images right after title
-      const imageSize = 45;
-      const imageSpacing = 8;
-      const imageWidth = rightWidth * (2 / 3);
-      const imageX = rightStart + rightWidth - imageWidth;
-      let imagesLoaded = 0;
-      let rightSideTextStartY = margin + 10; // Where text can start on right side
-
-      if (imgs.length === 0) {
-        // No images - right side is available for text from the start
-        rightSideTextStartY = margin + 10;
-      } else {
-        // Render images and track where they end
-        for (let i = 0; i < Math.min(imgs.length, 4); i++) {
-          let imgPath = imgs[i];
-          let imageUrl = '';
-          
-          if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
-            imageUrl = imgPath;
-            try {
-              const urlObj = new URL(imageUrl);
-              const pathParts = urlObj.pathname.split('/');
-              if (pathParts.length > 0) {
-                const filename = pathParts[pathParts.length - 1];
-                if (filename.includes('%') === false && (filename.includes(' ') || filename.includes('&'))) {
-                  const encodedFilename = encodeURIComponent(filename);
-                  pathParts[pathParts.length - 1] = encodedFilename;
-                  imageUrl = `${urlObj.origin}${pathParts.join('/')}`;
-                }
-              }
-            } catch (e) {
-              const lastSlash = imageUrl.lastIndexOf('/');
-              if (lastSlash >= 0) {
-                const before = imageUrl.substring(0, lastSlash + 1);
-                const filename = imageUrl.substring(lastSlash + 1);
-                if (!filename.includes('%')) {
-                  imageUrl = before + encodeURIComponent(filename);
-                }
-              }
-            }
-          } else if (imgPath.startsWith('/images/') || imgPath.startsWith('/data/')) {
-            const pathParts = imgPath.split('/');
-            if (pathParts.length > 0) {
-              const filename = pathParts[pathParts.length - 1];
-              const encodedFilename = encodeURIComponent(filename);
-              pathParts[pathParts.length - 1] = encodedFilename;
-              imageUrl = `${apiBase}${pathParts.join('/')}`;
-            } else {
-              imageUrl = `${apiBase}${imgPath}`;
-            }
-          } else if (imgPath.startsWith('images/') || imgPath.startsWith('data/')) {
-            imageUrl = `${apiBase}/${imgPath}`;
-            const lastSlash = imageUrl.lastIndexOf('/');
-            if (lastSlash >= 0) {
-              const before = imageUrl.substring(0, lastSlash + 1);
-              const filename = imageUrl.substring(lastSlash + 1);
-              imageUrl = before + encodeURIComponent(filename);
-            }
-          } else {
-            imageUrl = `${apiBase}/images/${encodeURIComponent(imgPath)}`;
-          }
-
-          try {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            
-            const imageLoaded = await new Promise((resolve) => {
-              img.onload = () => resolve(true);
-              img.onerror = () => resolve(false);
-              img.src = imageUrl;
-              setTimeout(() => resolve(false), 10000);
-            });
-            
-            if (imageLoaded && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-              const canvas = document.createElement('canvas');
-              canvas.width = img.naturalWidth;
-              canvas.height = img.naturalHeight;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0);
-              
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-              let format = 'JPEG';
-              if (imageUrl.toLowerCase().endsWith('.png')) {
-                const pngDataUrl = canvas.toDataURL('image/png');
-                format = 'PNG';
-                doc.addImage(pngDataUrl, format, imageX, imageY, imageWidth, imageSize);
-              } else {
-                doc.addImage(dataUrl, format, imageX, imageY, imageWidth, imageSize);
-              }
-              
-              imagesLoaded++;
-              imageY += imageSize + imageSpacing;
-            } else {
-              doc.setFontSize(10);
-              doc.setTextColor(150, 150, 150);
-              const unavailableText = 'Image unavailable';
-              const textWidth = doc.getTextWidth(unavailableText);
-              const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-              doc.text(unavailableText, centerX, imageY);
-              imageY += 15;
-            }
-          } catch (error) {
-            console.error(`Failed to load image ${imageUrl}:`, error);
-            doc.setFontSize(10);
-            doc.setTextColor(150, 150, 150);
-            const unavailableText = 'Image unavailable';
-            const textWidth = doc.getTextWidth(unavailableText);
-            const centerX = rightStart + (rightWidth / 2) - (textWidth / 2);
-            doc.text(unavailableText, centerX, imageY);
-            imageY += 15;
-          }
-        }
-        // Set right side text start position after last image
-        rightSideTextStartY = imageY + 5; // Start text 5px below last image
-      }
-      
-      // If no images were loaded, right side is available from the start
-      if (imagesLoaded === 0 && imgs.length === 0) {
-        rightSideTextStartY = margin + 10;
-      }
-
-      // Now render data columns with bold column names
-      doc.setFontSize(10);
-      
-      // Calculate where images end (if any)
-      // Images are only on the first page, so track the Y position where they end
-      let imagesEndY = margin + 10; // Default if no images
-      let imagesPageNumber = 0; // Images are on page 0 (first page)
-      if (imagesLoaded > 0) {
-        imagesEndY = imageY; // Where last image ended
-      }
-      
-      // Track current page number (0-based)
-      let currentPageNumber = 0;
-      
-      // All 54 columns in exact order from Excel
-      const allColumns = [
-        "SITE ID",
-        "PREFIX (ACP)",
-        "ACNO",
-        "ACCESSION",
-        "CULTIVAR NAME",
-        "FAMILY",
-        "HABITAT",
-        "BREEDER OR COLLECTOR",
-        "GENUS",
-        "SPECIES",
-        "INVENTORY TYPE",
-        "INVENTORY MAINTENANCE POLICY",
-        "PLANT TYPE",
-        "LIFE FORM",
-        "IS DISTRIBUTABLE?",
-        "FRUITSHAPE 115057",
-        "FRUITLGTH 115156",
-        "FRUITWIDTH 115157",
-        "FRTWEIGHT 115121",
-        "FRTSTEMTHK 115127",
-        "SEEDCOLOR 115086",
-        "SSIZE Quantity of Seed",
-        "SEEDLENGTH 115163",
-        "SEEDWIDTH 115164",
-        "SEEDNUMBER 115087",
-        "FRTTEXTURE 115123",
-        "FRTSTMLGTH 115158",
-        "SEEDSHAPE 115167",
-        "FRTFLSHOXI 115129",
-        "FIRST BLOOM DATE",
-        "FULL BLOOM DATE",
-        "COLOUR",
-        "DENSITY",
-        "FIREBLIGHT RATING",
-        "TAXON",
-        "CMT",
-        "NARATIVEKEYWORD",
-        "FULL NARATIVE",
-        "PEDIGREE DESCRIPTION",
-        "AVAILABILITY STATUS ",
-        "PROVINCE/STATE",
-        "COUNTRY",
-        "LOCATION SECTION 1",
-        "LOCATION SECTION 2",
-        "LOCATION SECTION 3",
-        "LOCATION SECTION 4",
-        "COOPERATOR",
-        "IPR TYPE",
-        "LABEL NAME",
-        "LEVEL OF IMPROVEMENT",
-        "RELEASED DATE",
-        "RELEASED DATE FORMAT",
-        "COOPERATOR_NEW",
-        "IMAGES"
-      ];
-
-      // Helper to get field value for a column (with fallback field names)
-      const getColumnValue = (columnName) => {
-        // Try exact column name first (most common case - stored in metadata)
-        let value = getPDFFieldValue(row, [columnName]);
-        
-        // If not found, try common field name mappings
-        if (!value) {
-          const fieldMappings = {
-            'CULTIVAR NAME': ['cultivar_name', 'name', 'cultivar'],
-            'ACNO': ['acno'],
-            'ACCESSION': ['accession'],
-            'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country'],
-            'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province'],
-            'GENUS': ['e genus', 'e_genus', 'E GENUS'],
-            'SPECIES': ['e species', 'e_species', 'E SPECIES'],
-            'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'E Pedigree'],
-            'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'E_BREEDER', 'e collector', 'e_collector', 'E Collector'],
-            'TAXON': ['taxon', 'taxno']
-          };
-          
-          if (fieldMappings[columnName]) {
-            value = getPDFFieldValue(row, fieldMappings[columnName]);
-          }
-        }
-        
-        return value || '';
-      };
-
-      let dataY = yPos;
-      
-      // Display all columns except IMAGES (which is handled separately)
-      allColumns.forEach(columnName => {
-        // Skip IMAGES column as it's handled separately
-        if (columnName === 'IMAGES') {
-          return;
-        }
-        
-        const value = getColumnValue(columnName);
-        const displayValue = value || 'N/A';
-        const lineHeight = 5;
-        const isFullNarrative = columnName === 'FULL NARATIVE';
-        
-        // Check if we need a new page
-        if (dataY + lineHeight > pageHeight - bottomMargin) {
-          doc.addPage();
-          currentPageNumber++;
-          dataY = margin;
-        }
-        
-        // For FULL NARATIVE, render column name on separate line, then value below
-        // For all other columns, render column name and value on same line
-        if (isFullNarrative) {
-          // Render column name in bold and black on its own line
-          doc.setFont(undefined, 'bold');
-          doc.setTextColor(0, 0, 0);
-          const columnNameText = `${columnName}:`;
-          doc.text(columnNameText, margin, dataY);
-          dataY += lineHeight;
-          
-          // Render value - use full width if no images, past image area, or on new page
-          doc.setFont(undefined, 'normal');
-          doc.setTextColor(44, 62, 80);
-          
-          let remainingText = displayValue;
-          const valueX = margin + 5;
-          let textRendered = false;
-          
-          while (remainingText && remainingText.trim().length > 0) {
-            // Determine available width:
-            // - Full width if: no images, past image area on first page, or on any page after first
-            const isOnFirstPage = currentPageNumber === imagesPageNumber;
-            const isPastImageArea = isOnFirstPage && dataY >= imagesEndY;
-            const useFullWidth = imagesLoaded === 0 || !isOnFirstPage || isPastImageArea;
-            const availableWidth = useFullWidth ? (pageWidth - (margin * 2) - 5) : (leftWidth - 5);
-            
-            // Check if we need a new page before starting
-            if (dataY + lineHeight > pageHeight - bottomMargin) {
-              doc.addPage();
-              currentPageNumber++;
-              dataY = margin;
-              // On new page (after first), always use full width since images are only on first page
-              const availableWidthNewPage = pageWidth - (margin * 2) - 5;
-              const valueLinesNewPage = doc.splitTextToSize(remainingText, availableWidthNewPage);
-              
-              for (let j = 0; j < valueLinesNewPage.length; j++) {
-                if (dataY + lineHeight > pageHeight - bottomMargin) {
-                  doc.addPage();
-                  currentPageNumber++;
-                  dataY = margin;
-                }
-                doc.text(valueLinesNewPage[j], valueX, dataY);
-                dataY += lineHeight;
-                textRendered = true;
-              }
-              break; // All text rendered on new page(s)
-            }
-            
-            // Split text for current available width
-            const valueLines = doc.splitTextToSize(remainingText, availableWidth);
-            
-            if (valueLines.length === 0) {
-              break; // No more text to render
-            }
-            
-            // Track if we need to recalculate with different width
-            let needRecalculate = false;
-            let newRemainingText = '';
-            
-            // Render all lines
-            for (let i = 0; i < valueLines.length; i++) {
-              // Check if we need a new page
-              if (dataY + lineHeight > pageHeight - bottomMargin) {
-                doc.addPage();
-                currentPageNumber++;
-                dataY = margin;
-                // Recalculate remaining text for new page (always full width on new pages)
-                newRemainingText = valueLines.slice(i).join(' ');
-                needRecalculate = true;
-                break;
-              }
-              
-              // Check if we've passed image area on first page - need to recalculate with full width
-              if (isOnFirstPage && imagesLoaded > 0 && dataY >= imagesEndY && i < valueLines.length - 1) {
-                // Render current line, then recalculate remaining with full width
-                doc.text(valueLines[i], valueX, dataY);
-                dataY += lineHeight;
-                textRendered = true;
-                newRemainingText = valueLines.slice(i + 1).join(' ');
-                needRecalculate = true;
-                break;
-              }
-              
-              // Render the line
-              doc.text(valueLines[i], valueX, dataY);
-              dataY += lineHeight;
-              textRendered = true;
-            }
-            
-            // Update remaining text if we need to recalculate
-            if (needRecalculate) {
-              remainingText = newRemainingText;
-              continue; // Continue while loop with new remaining text
-            }
-            
-            // If we rendered all lines, we're done
-            break;
-          }
-        } else {
-          // For all other columns, render column name and value on same line
-          doc.setFont(undefined, 'bold');
-          doc.setTextColor(0, 0, 0);
-          const columnNameText = `${columnName}:`;
-          const spaceWidth = doc.getTextWidth(' '); // Width of one space character
-          const columnNameWidth = doc.getTextWidth(columnNameText);
-          
-          // Determine available width for value
-          const isOnFirstPage = currentPageNumber === imagesPageNumber;
-          const isPastImageArea = isOnFirstPage && dataY >= imagesEndY;
-          const useFullWidth = imagesLoaded === 0 || !isOnFirstPage || isPastImageArea;
-          const totalAvailableWidth = useFullWidth ? (pageWidth - (margin * 2)) : leftWidth;
-          const valueWidth = totalAvailableWidth - columnNameWidth - spaceWidth; // One space between name and value
-          const valueX = margin + columnNameWidth + spaceWidth;
-          
-          // Split value text to fit available width
-          doc.setFont(undefined, 'normal');
-          doc.setTextColor(44, 62, 80);
-          const valueLines = doc.splitTextToSize(displayValue, valueWidth);
-          
-          // Render first line: column name + first part of value on same line
-          if (valueLines.length > 0) {
-            // Render column name
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(0, 0, 0);
-            doc.text(columnNameText, margin, dataY);
-            
-            // Render first line of value on same line
-            doc.setFont(undefined, 'normal');
-            doc.setTextColor(44, 62, 80);
-            doc.text(valueLines[0], valueX, dataY);
-            dataY += lineHeight;
-            
-            // Render remaining value lines (if any) with proper indentation
-            for (let i = 1; i < valueLines.length; i++) {
-              if (dataY + lineHeight > pageHeight - bottomMargin) {
-                doc.addPage();
-                currentPageNumber++;
-                dataY = margin;
-                // On new page, recalculate width (always full width on new pages)
-                const availableWidthNewPage = pageWidth - (margin * 2);
-                const remainingText = valueLines.slice(i).join(' ');
-                const valueLinesNewPage = doc.splitTextToSize(remainingText, availableWidthNewPage);
-                
-                for (let j = 0; j < valueLinesNewPage.length; j++) {
-                  if (dataY + lineHeight > pageHeight - bottomMargin) {
-                    doc.addPage();
-                    currentPageNumber++;
-                    dataY = margin;
-                  }
-                  doc.text(valueLinesNewPage[j], margin, dataY);
-                  dataY += lineHeight;
-                }
-                break;
-              }
-              
-              // Check if we've passed image area - recalculate width if needed
-              const isOnFirstPageForLine = currentPageNumber === imagesPageNumber;
-              const isPastImageAreaForLine = isOnFirstPageForLine && dataY >= imagesEndY;
-              const useFullWidthForLine = imagesLoaded === 0 || !isOnFirstPageForLine || isPastImageAreaForLine;
-              const availableWidthForLine = useFullWidthForLine ? (pageWidth - (margin * 2)) : leftWidth;
-              
-              // If width changed, recalculate remaining text
-              if (useFullWidthForLine !== useFullWidth && i < valueLines.length - 1) {
-                const remainingText = valueLines.slice(i).join(' ');
-                const valueLinesRecalc = doc.splitTextToSize(remainingText, availableWidthForLine);
-                
-                for (let j = 0; j < valueLinesRecalc.length; j++) {
-                  if (dataY + lineHeight > pageHeight - bottomMargin) {
-                    doc.addPage();
-                    currentPageNumber++;
-                    dataY = margin;
-                  }
-                  doc.text(valueLinesRecalc[j], margin, dataY);
-                  dataY += lineHeight;
-                }
-                break;
-              }
-              
-              doc.text(valueLines[i], valueX, dataY);
-              dataY += lineHeight;
-            }
-          } else {
-            // Even if value is empty, render column name
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(0, 0, 0);
-            doc.text(columnNameText, margin, dataY);
-            dataY += lineHeight;
-          }
-        }
-        
-        dataY += 2; // Spacing after field
-      });
-
-      const pdfBlob = doc.output('blob');
-      const cultivarNameSafe = cultivarName.replace(/[^a-zA-Z0-9]/g, '_');
-      pdfs.push({ blob: pdfBlob, filename: `${cultivarNameSafe}_${accession || 'unknown'}.pdf` });
-    }
-
-    // Final progress update (100%)
-    updateProgress(totalApples, totalApples);
-    
-    // Small delay to show 100% before starting download
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    if (pdfs.length > 1) {
-      const zip = new JSZip();
-      pdfs.forEach(({ blob, filename }) => {
-        zip.file(filename, blob);
-      });
-
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = window.URL.createObjectURL(zipBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `appleverse_selected_${pdfs.length}_apples.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      const successMsg = `Downloaded ZIP file with ${pdfs.length} PDF files.`;
-      console.log("PDF:", successMsg);
-      if (setErrorMessage) {
-        setErrorMessage(successMsg);
-        setTimeout(() => setErrorMessage(null), 5000);
-      } else {
-        alert(successMsg);
-      }
-    } else {
-      const url = window.URL.createObjectURL(pdfs[0].blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = pdfs[0].filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      const successMsg = `Downloaded PDF: ${pdfs[0].filename}`;
-      console.log("PDF:", successMsg);
-      if (setErrorMessage) {
-        setErrorMessage(successMsg);
-        setTimeout(() => setErrorMessage(null), 5000);
-      } else {
-        alert(successMsg);
-      }
-    }
-  } catch (error) {
-    console.error("PDF export error:", error);
-    const errorMsg = `Failed to generate PDF: ${error.message || 'Unknown error'}`;
-    if (setErrorMessage) {
-      setErrorMessage(errorMsg);
-      setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert(errorMsg);
-    }
-  }
-}
-
-// Export all apples in a single PDF file
-async function exportPDFAll(rows, apiBase, setErrorMessage = null) {
-  console.log("PDF(All): Starting export with", rows?.length || 0, "apples");
-  
-  if (!rows?.length) {
-    const msg = "No rows to export.";
-    console.error("PDF(All):", msg);
-    if (setErrorMessage) {
-      setErrorMessage(msg);
-      setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert(msg);
-    }
-    return;
-  }
-
-  try {
-    console.log("PDF(All): Loading jsPDF library...");
-    const { jsPDF } = await import("jspdf");
-    console.log("PDF(All): jsPDF loaded, creating document...");
-
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
-    const bottomMargin = 20;
-    const leftWidth = pageWidth * 0.50;
-    const rightWidth = pageWidth * 0.45;
-    const rightStart = pageWidth * 0.52;
-
-    // Helper to get field value from record (same as exportPDF)
-    const getPDFFieldValue = (record, fieldNames) => {
-      if (record.metadata) {
-        const isMap = record.metadata instanceof Map;
-        const getMetadataValue = (key) => {
-          if (isMap) {
-            return record.metadata.get(key);
-          } else {
-            return record.metadata[key];
-          }
-        };
-        
-        const getMetadataKeys = () => {
-          if (isMap) {
-            return Array.from(record.metadata.keys());
-          } else {
-            return Object.keys(record.metadata);
-          }
-        };
-        
-        for (const field of fieldNames) {
-          let value = getMetadataValue(field);
-          if (value !== undefined && value !== null && value !== '') {
-            return String(value);
-          }
-          
-          const trimmedField = field.trim();
-          if (trimmedField !== field) {
-            value = getMetadataValue(trimmedField);
-            if (value !== undefined && value !== null && value !== '') {
-              return String(value);
-            }
-          }
-          
-          const metadataKeys = getMetadataKeys();
-          for (const key of metadataKeys) {
-            if (key && String(key).trim().toLowerCase() === field.trim().toLowerCase()) {
-              value = getMetadataValue(key);
-              if (value !== undefined && value !== null && value !== '') {
-                return String(value);
-              }
-            }
-          }
-        }
-      }
-      for (const field of fieldNames) {
-        const value = record[field];
-        if (value !== undefined && value !== null && value !== '') {
-          return String(value);
-        }
-      }
-      return '';
-    };
-
-    // All 54 columns in exact order from Excel
-    const allColumns = [
-      "SITE ID", "PREFIX (ACP)", "ACNO", "ACCESSION", "CULTIVAR NAME", "FAMILY", "HABITAT",
-      "BREEDER OR COLLECTOR", "GENUS", "SPECIES", "INVENTORY TYPE", "INVENTORY MAINTENANCE POLICY",
-      "PLANT TYPE", "LIFE FORM", "IS DISTRIBUTABLE?", "FRUITSHAPE 115057", "FRUITLGTH 115156",
-      "FRUITWIDTH 115157", "FRTWEIGHT 115121", "FRTSTEMTHK 115127", "SEEDCOLOR 115086",
-      "SSIZE Quantity of Seed", "SEEDLENGTH 115163", "SEEDWIDTH 115164", "SEEDNUMBER 115087",
-      "FRTTEXTURE 115123", "FRTSTMLGTH 115158", "SEEDSHAPE 115167", "FRTFLSHOXI 115129",
-      "FIRST BLOOM DATE", "FULL BLOOM DATE", "COLOUR", "DENSITY", "FIREBLIGHT RATING", "TAXON",
-      "CMT", "NARATIVEKEYWORD", "FULL NARATIVE", "PEDIGREE DESCRIPTION", "AVAILABILITY STATUS ",
-      "PROVINCE/STATE", "COUNTRY", "LOCATION SECTION 1", "LOCATION SECTION 2", "LOCATION SECTION 3",
-      "LOCATION SECTION 4", "COOPERATOR", "IPR TYPE", "LABEL NAME", "LEVEL OF IMPROVEMENT",
-      "RELEASED DATE", "RELEASED DATE FORMAT", "COOPERATOR_NEW", "IMAGES"
-    ];
-
-    const getColumnValue = (row, columnName) => {
-      let value = getPDFFieldValue(row, [columnName]);
-      if (!value) {
-        const fieldMappings = {
-          'CULTIVAR NAME': ['cultivar_name', 'name', 'cultivar'],
-          'ACNO': ['acno'],
-          'ACCESSION': ['accession'],
-          'COUNTRY': ['e origin country', 'e_origin_country', 'E Origin Country'],
-          'PROVINCE/STATE': ['e origin province', 'e_origin_province', 'E Origin Province'],
-          'GENUS': ['e genus', 'e_genus', 'E GENUS'],
-          'SPECIES': ['e species', 'e_species', 'E SPECIES'],
-          'PEDIGREE DESCRIPTION': ['e pedigree', 'e_pedigree', 'E pedigree', 'E Pedigree'],
-          'BREEDER OR COLLECTOR': ['e breeder', 'e_breeder', 'e breeder or collector', 'E Breeder', 'E_BREEDER', 'e collector', 'e_collector', 'E Collector'],
-          'TAXON': ['taxon', 'taxno']
-        };
-        if (fieldMappings[columnName]) {
-          value = getPDFFieldValue(row, fieldMappings[columnName]);
-        }
-      }
-      return value || '';
-    };
-
-    // Process each apple
-    const totalApples = rows.length;
-    console.log(`PDF(All): Processing ${totalApples} apples (optimized mode - images from data only, no API calls)...`);
-    
-    // Update progress every 25 apples for better feedback
-    const updateProgress = (current, total) => {
-      const percent = Math.round((current / total) * 100);
-      if (setErrorMessage) {
-        setErrorMessage(`Generating PDF(All)... ${current}/${total} apples (${percent}%)`);
-      }
-      console.log(`PDF(All): Progress ${current}/${total} (${percent}%)`);
-    };
-    
-    for (let appleIndex = 0; appleIndex < rows.length; appleIndex++) {
-      const row = rows[appleIndex];
-      
-      // Update progress every 25 apples
-      if (appleIndex % 25 === 0 || appleIndex === rows.length - 1) {
-        updateProgress(appleIndex + 1, totalApples);
-      }
-      
-      // Add new page for each apple (except first)
-      if (appleIndex > 0) {
+      if (yPos > pageHeight - 40) {
         doc.addPage();
+        yPos = 20;
       }
+      
+      doc.setFontSize(14);
+      doc.setTextColor(44, 62, 80);
+      doc.text(title, margin, yPos);
+      yPos += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(85, 85, 85);
+      
+      nonEmptyData.forEach(([key, value]) => {
+        if (yPos > pageHeight - 20) {
+          doc.addPage();
+          yPos = 20;
+        }
+        const formattedKey = key.replace(/_/g, ' ').toUpperCase();
+        const text = `${formattedKey}: ${value || 'N/A'}`;
+        
+        const splitText = doc.splitTextToSize(text, pageWidth - 2 * margin - 10);
+        splitText.forEach(line => {
+          if (yPos > pageHeight - 20) {
+            doc.addPage();
+            yPos = 20;
+          }
+          doc.text(line, margin + 5, yPos);
+          yPos += lineHeight;
+        });
+      });
+      
+      return yPos + 5;
+    };
 
-      let yPos = margin;
-      let currentPageNumber = 0;
-      const imagesPageNumber = 0;
-
+    for (let i = 0; i < rows.length; i++) {
+      const apple = rows[i];
+      const doc = new jsPDF();
+      
+      let yPosition = 20;
+      
+      // Get cultivar name and accession with fallbacks
+      const cultivarName = getAppleField(apple, 'CULTIVAR NAME', 'cultivar_name', 'name') || 'Unknown';
+      const accession = getAppleField(apple, 'ACCESSION', 'accession') || 'N/A';
+      
       // Title
-      doc.setFontSize(18);
-      doc.setTextColor(231, 76, 60);
-      const cultivarName = getPDFFieldValue(row, ['CULTIVAR NAME', 'cultivar_name', 'name', 'cultivar']) || 'Unknown';
-      doc.text(cultivarName, margin, yPos);
-      yPos += 10;
-
+      doc.setFontSize(20);
+      doc.setTextColor(231, 111, 81);
+      doc.text(`Apple: ${cultivarName}`, margin, yPosition);
+      yPosition += 10;
+      
+      // Accession
       doc.setFontSize(12);
       doc.setTextColor(52, 73, 94);
-      const accession = getPDFFieldValue(row, ['ACCESSION', 'accession']) || '';
-      doc.text(`Accession: ${accession}`, margin, yPos);
-      yPos += 8;
-
-      doc.setDrawColor(231, 76, 60);
+      doc.text(`Accession: ${accession}`, margin, yPosition);
+      yPosition += 8;
+      
+      // Line
+      doc.setDrawColor(231, 111, 81);
       doc.setLineWidth(0.5);
-      doc.line(margin, yPos, leftWidth + margin, yPos);
-      yPos += 8;
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
 
-      // Get images
-      let imgs = (row.images && Array.isArray(row.images)) ? row.images :
-                 (row.Images && Array.isArray(row.Images)) ? row.Images :
-                 (row.IMAGE && Array.isArray(row.IMAGE)) ? row.IMAGE :
-                 (row['images'] && Array.isArray(row['images'])) ? row['images'] : [];
+      // Add all sections with proper field access
+      yPosition = addSection(doc, 'IDENTITY & INVENTORY', {
+        'Accession Number': getAppleField(apple, 'ACNO', 'acno'),
+        'Accession': accession,
+        'Cultivar Name': cultivarName,
+        'Site ID': getAppleField(apple, 'SITE ID', 'site_id'),
+        'Prefix': getAppleField(apple, 'PREFIX (ACP)', 'prefix_acp'),
+        'Label Name': getAppleField(apple, 'LABEL NAME', 'label_name')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'TAXONOMY', {
+        'Family': getAppleField(apple, 'FAMILY', 'family'),
+        'Genus': getAppleField(apple, 'GENUS', 'E GENUS', 'e_genus', 'e genus'),
+        'Species': getAppleField(apple, 'SPECIES', 'E SPECIES', 'e_species', 'e species'),
+        'Taxon': getAppleField(apple, 'TAXON', 'taxon', 'taxno'),
+        'Plant Type': getAppleField(apple, 'PLANT TYPE', 'plant_type'),
+        'Life Form': getAppleField(apple, 'LIFE FORM', 'life_form')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'GEOGRAPHY & ORIGIN', {
+        'Country': getAppleField(apple, 'COUNTRY', 'E Origin Country', 'e_origin_country', 'e origin country'),
+        'Province/State': getAppleField(apple, 'PROVINCE/STATE', 'E Origin Province', 'e_origin_province', 'e origin province'),
+        'Habitat': getAppleField(apple, 'HABITAT', 'habitat', 'e_habitat', 'e habitat'),
+        'Location 1': getAppleField(apple, 'LOCATION SECTION 1', 'location_section_1'),
+        'Location 2': getAppleField(apple, 'LOCATION SECTION 2', 'location_section_2'),
+        'Location 3': getAppleField(apple, 'LOCATION SECTION 3', 'location_section_3'),
+        'Location 4': getAppleField(apple, 'LOCATION SECTION 4', 'location_section_4')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'PEOPLE & ORGANIZATIONS', {
+        'Breeder or Collector': getAppleField(apple, 'BREEDER OR COLLECTOR', 'breeder_or_collector', 'e_breeder', 'e breeder'),
+        'Cooperator': getAppleField(apple, 'COOPERATOR', 'cooperator'),
+        'Cooperator New': getAppleField(apple, 'COOPERATOR_NEW', 'cooperator_new')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'FRUIT CHARACTERISTICS', {
+        'Fruit Shape': getAppleField(apple, 'FRUITSHAPE 115057', 'fruitshape_115057'),
+        'Fruit Length': getAppleField(apple, 'FRUITLGTH 115156', 'fruitlgth_115156'),
+        'Fruit Width': getAppleField(apple, 'FRUITWIDTH 115157', 'fruitwidth_115157'),
+        'Fruit Weight': getAppleField(apple, 'FRTWEIGHT 115121', 'frtweight_115121'),
+        'Stem Thickness': getAppleField(apple, 'FRTSTEMTHK 115127', 'frtstemthk_115127'),
+        'Stem Length': getAppleField(apple, 'FRTSTMLGTH 115158', 'frtstmlgth_115158'),
+        'Texture': getAppleField(apple, 'FRTTEXTURE 115123', 'frttexture_115123'),
+        'Colour': getAppleField(apple, 'COLOUR', 'colour', 'color'),
+        'Density': getAppleField(apple, 'DENSITY', 'density')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'SEED CHARACTERISTICS', {
+        'Seed Color': getAppleField(apple, 'SEEDCOLOR 115086', 'seedcolor_115086'),
+        'Seed Size': getAppleField(apple, 'SSIZE Quantity of Seed', 'ssize_quantity_of_seed'),
+        'Seed Length': getAppleField(apple, 'SEEDLENGTH 115163', 'seedlength_115163'),
+        'Seed Width': getAppleField(apple, 'SEEDWIDTH 115164', 'seedwidth_115164'),
+        'Seed Number': getAppleField(apple, 'SEEDNUMBER 115087', 'seednumber_115087'),
+        'Seed Shape': getAppleField(apple, 'SEEDSHAPE 115167', 'seedshape_115167')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'BLOOM & GROWTH', {
+        'First Bloom': getAppleField(apple, 'FIRST BLOOM DATE', 'first_bloom_date'),
+        'Full Bloom': getAppleField(apple, 'FULL BLOOM DATE', 'full_bloom_date'),
+        'Fireblight Rating': getAppleField(apple, 'FIREBLIGHT RATING', 'fireblight_rating')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'DESCRIPTIVE INFORMATION', {
+        'Comments': getAppleField(apple, 'CMT', 'cmt'),
+        'Narrative Keyword': getAppleField(apple, 'NARATIVEKEYWORD', 'narativekeyword'),
+        'Full Narrative': getAppleField(apple, 'FULL NARATIVE', 'full_narative'),
+        'Pedigree Description': getAppleField(apple, 'PEDIGREE DESCRIPTION', 'pedigree_description', 'e_pedigree', 'e pedigree')
+      }, yPosition);
+
+      yPosition = addSection(doc, 'STATUS & DISTRIBUTION', {
+        'Availability Status': getAppleField(apple, 'AVAILABILITY STATUS ', 'availability_status'),
+        'Is Distributable': getAppleField(apple, 'IS DISTRIBUTABLE?', 'is_distributable'),
+        'Inventory Type': getAppleField(apple, 'INVENTORY TYPE', 'inventory_type'),
+        'Inventory Policy': getAppleField(apple, 'INVENTORY MAINTENANCE POLICY', 'inventory_maintenance_policy'),
+        'Level of Improvement': getAppleField(apple, 'LEVEL OF IMPROVEMENT', 'level_of_improvement'),
+        'IPR Type': getAppleField(apple, 'IPR TYPE', 'ipr_type'),
+        'Released Date': getAppleField(apple, 'RELEASED DATE', 'released_date')
+      }, yPosition);
+
+      // Add images with better error handling
+      let images = [];
       
-      if (imgs.length > 0) {
-        imgs = imgs.map(img => {
-          const imgPath = String(img).trim();
-          if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
-            return imgPath;
-          } else if (imgPath.startsWith('/images/') || imgPath.startsWith('/data/')) {
-            return `${apiBase}${imgPath}`;
-          } else if (imgPath.startsWith('images/') || imgPath.startsWith('data/')) {
-            return `${apiBase}/${imgPath}`;
-          } else {
-            return `${apiBase}/images/${imgPath}`;
+      // Try multiple ways to get images
+      if (apple.metadata && apple.metadata['IMAGES']) {
+        const metadataImages = apple.metadata['IMAGES'];
+        if (Array.isArray(metadataImages)) {
+          images = metadataImages;
+        } else if (typeof metadataImages === 'string') {
+          try {
+            const parsed = JSON.parse(metadataImages);
+            if (Array.isArray(parsed)) {
+              images = parsed;
+            } else {
+              images = metadataImages.split(',').map(img => img.trim()).filter(img => img);
+            }
+          } catch {
+            images = metadataImages.split(',').map(img => img.trim()).filter(img => img);
           }
-        });
-      }
-      
-      // Fetch images from API (same as single PDF export) but with timeout for efficiency
-      if (accession) {
-        try {
-          // Use Promise.race to add timeout for API calls in bulk processing
-          const fetchPromise = fetch(`${apiBase}/api/apples/find-image/${encodeURIComponent(accession)}`);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Timeout')), 2000) // 2 second timeout for API calls
-          );
-          
-          const response = await Promise.race([fetchPromise, timeoutPromise]);
-          const data = await response.json();
-          
-          if (data.success && data.images && data.images.length > 0) {
-            const apiImgs = data.images.map(img => {
-              const pathParts = img.split('/');
-              if (pathParts.length > 0) {
-                const filename = pathParts[pathParts.length - 1];
-                const encodedFilename = encodeURIComponent(filename);
-                pathParts[pathParts.length - 1] = encodedFilename;
-                return `${apiBase}${pathParts.join('/')}`;
-              }
-              return `${apiBase}${img}`;
-            });
-            const seenUrls = new Set(imgs.map(url => url.toLowerCase()));
-            apiImgs.forEach(apiImg => {
-              if (!seenUrls.has(apiImg.toLowerCase())) {
-                imgs.push(apiImg);
-                seenUrls.add(apiImg.toLowerCase());
-              }
-            });
-          }
-        } catch (error) {
-          // Silently continue if API call fails or times out - use images from row data
-          console.log(`PDF(All): Skipping API image fetch for ${accession} (timeout or error)`);
         }
       }
       
-      // Render images
-      let imageY = margin + 10;
-      const imageSize = 45;
-      const imageSpacing = 8;
-      const imageWidth = rightWidth * (2 / 3);
-      const imageX = rightStart + rightWidth - imageWidth;
-      let imagesLoaded = 0;
-      let rightSideTextStartY = margin + 10;
-      let imagesEndY = margin + 10;
+      if (images.length === 0) {
+        images = (apple.images && Array.isArray(apple.images)) ? apple.images :
+                (apple.Images && Array.isArray(apple.Images)) ? apple.Images :
+                (apple.IMAGE && Array.isArray(apple.IMAGE)) ? apple.IMAGE : [];
+      }
+      
+      if (images.length > 0) {
+        doc.addPage();
+        yPosition = 20;
+        
+        doc.setFontSize(14);
+        doc.setTextColor(44, 62, 80);
+        doc.text('Images', margin, yPosition);
+        yPosition += 15;
 
-      if (imgs.length > 0) {
-        for (let i = 0; i < Math.min(imgs.length, 4); i++) {
-          let imgPath = imgs[i];
-          let imageUrl = '';
-          
-          if (imgPath.startsWith('http://') || imgPath.startsWith('https://')) {
-            imageUrl = imgPath;
-            try {
-              const urlObj = new URL(imageUrl);
-              const pathParts = urlObj.pathname.split('/');
-              if (pathParts.length > 0) {
-                const filename = pathParts[pathParts.length - 1];
-                if (filename.includes('%') === false && (filename.includes(' ') || filename.includes('&'))) {
-                  const encodedFilename = encodeURIComponent(filename);
-                  pathParts[pathParts.length - 1] = encodedFilename;
-                  imageUrl = `${urlObj.origin}${pathParts.join('/')}`;
-                }
-              }
-            } catch (e) {
-              const lastSlash = imageUrl.lastIndexOf('/');
-              if (lastSlash >= 0) {
-                const before = imageUrl.substring(0, lastSlash + 1);
-                const filename = imageUrl.substring(lastSlash + 1);
-                if (!filename.includes('%')) {
-                  imageUrl = before + encodeURIComponent(filename);
-                }
-              }
-            }
-          } else if (imgPath.startsWith('/images/') || imgPath.startsWith('/data/')) {
-            const pathParts = imgPath.split('/');
-            if (pathParts.length > 0) {
-              const filename = pathParts[pathParts.length - 1];
-              const encodedFilename = encodeURIComponent(filename);
-              pathParts[pathParts.length - 1] = encodedFilename;
-              imageUrl = `${apiBase}${pathParts.join('/')}`;
-            } else {
-              imageUrl = `${apiBase}${imgPath}`;
-            }
-          } else if (imgPath.startsWith('images/') || imgPath.startsWith('data/')) {
-            imageUrl = `${apiBase}/${imgPath}`;
-            const lastSlash = imageUrl.lastIndexOf('/');
-            if (lastSlash >= 0) {
-              const before = imageUrl.substring(0, lastSlash + 1);
-              const filename = imageUrl.substring(lastSlash + 1);
-              imageUrl = before + encodeURIComponent(filename);
-            }
-          } else {
-            imageUrl = `${apiBase}/images/${encodeURIComponent(imgPath)}`;
-          }
-
+        let successfulImages = 0;
+        for (let j = 0; j < images.length && successfulImages < 6; j++) {
           try {
+            let imgUrl = String(images[j]).trim();
+            
+            // Construct proper URL
+            if (imgUrl.startsWith('/images/') || imgUrl.startsWith('/data/')) {
+              imgUrl = `${apiBase}${imgUrl}`;
+            } else if (!imgUrl.startsWith('http://') && !imgUrl.startsWith('https://')) {
+              if (imgUrl.startsWith('images/') || imgUrl.startsWith('data/')) {
+                imgUrl = `${apiBase}/${imgUrl}`;
+              } else {
+                imgUrl = `${apiBase}/images/${imgUrl}`;
+              }
+            }
+
             const img = new Image();
             img.crossOrigin = 'anonymous';
             
-            // Optimized timeout for PDF(All) - faster bulk processing (1s instead of 10s)
-            const imageLoaded = await new Promise((resolve) => {
-              img.onload = () => resolve(true);
-              img.onerror = () => resolve(false);
-              img.src = imageUrl;
-              setTimeout(() => resolve(false), 1000); // Reduced to 1s for faster processing
+            await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error('timeout')), 10000);
+              img.onload = () => { clearTimeout(timeout); resolve(); };
+              img.onerror = () => { clearTimeout(timeout); reject(new Error('load failed')); };
+              img.src = imgUrl;
             });
+
+            const maxWidth = 80;
+            const maxHeight = 60;
             
-            if (imageLoaded && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-              const canvas = document.createElement('canvas');
-              canvas.width = img.naturalWidth;
-              canvas.height = img.naturalHeight;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0);
-              
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-              let format = 'JPEG';
-              if (imageUrl.toLowerCase().endsWith('.png')) {
-                const pngDataUrl = canvas.toDataURL('image/png');
-                format = 'PNG';
-                doc.addImage(pngDataUrl, format, imageX, imageY, imageWidth, imageSize);
-              } else {
-                doc.addImage(dataUrl, format, imageX, imageY, imageWidth, imageSize);
-              }
-              
-              imagesLoaded++;
-              imageY += imageSize + imageSpacing;
+            let imgWidth = img.width;
+            let imgHeight = img.height;
+            
+            if (imgWidth > maxWidth) {
+              const ratio = maxWidth / imgWidth;
+              imgWidth = maxWidth;
+              imgHeight = imgHeight * ratio;
             }
-          } catch (error) {
-            console.error(`Failed to load image ${imageUrl}:`, error);
-          }
-        }
-        imagesEndY = imageY;
-        rightSideTextStartY = imageY + 5;
-      }
+            if (imgHeight > maxHeight) {
+              const ratio = maxHeight / imgHeight;
+              imgHeight = maxHeight;
+              imgWidth = imgWidth * ratio;
+            }
 
-      if (imagesLoaded === 0 && imgs.length === 0) {
-        rightSideTextStartY = margin + 10;
-      }
+            const col = successfulImages % 2;
+            const row = Math.floor(successfulImages / 2);
+            const xPos = margin + col * (maxWidth + 10);
+            const yPos = yPosition + row * (maxHeight + 10);
 
-      // Render data columns
-      doc.setFontSize(10);
-      let dataY = yPos;
-
-      allColumns.forEach(columnName => {
-        if (columnName === 'IMAGES') {
-          return;
-        }
-        
-        const value = getColumnValue(row, columnName);
-        const displayValue = value || 'N/A';
-        const lineHeight = 5;
-        const isFullNarrative = columnName === 'FULL NARATIVE';
-        
-        if (dataY + lineHeight > pageHeight - bottomMargin) {
-          doc.addPage();
-          currentPageNumber++;
-          dataY = margin;
-        }
-        
-        if (isFullNarrative) {
-          doc.setFont(undefined, 'bold');
-          doc.setTextColor(0, 0, 0);
-          const columnNameText = `${columnName}:`;
-          doc.text(columnNameText, margin, dataY);
-          dataY += lineHeight;
-          
-          doc.setFont(undefined, 'normal');
-          doc.setTextColor(44, 62, 80);
-          
-          let remainingText = displayValue;
-          const valueX = margin + 5;
-          
-          while (remainingText && remainingText.trim().length > 0) {
-            const isOnFirstPage = currentPageNumber === imagesPageNumber;
-            const isPastImageArea = isOnFirstPage && dataY >= imagesEndY;
-            const useFullWidth = imagesLoaded === 0 || !isOnFirstPage || isPastImageArea;
-            const availableWidth = useFullWidth ? (pageWidth - (margin * 2) - 5) : (leftWidth - 5);
-            
-            if (dataY + lineHeight > pageHeight - bottomMargin) {
+            if (yPos + imgHeight > pageHeight - 20) {
               doc.addPage();
-              currentPageNumber++;
-              dataY = margin;
-              const availableWidthNewPage = pageWidth - (margin * 2) - 5;
-              const valueLinesNewPage = doc.splitTextToSize(remainingText, availableWidthNewPage);
-              
-              for (let j = 0; j < valueLinesNewPage.length; j++) {
-                if (dataY + lineHeight > pageHeight - bottomMargin) {
-                  doc.addPage();
-                  currentPageNumber++;
-                  dataY = margin;
-                }
-                doc.text(valueLinesNewPage[j], valueX, dataY);
-                dataY += lineHeight;
-              }
-              break;
+              yPosition = 20;
             }
-            
-            const valueLines = doc.splitTextToSize(remainingText, availableWidth);
-            
-            if (valueLines.length === 0) {
-              break;
-            }
-            
-            let needRecalculate = false;
-            let newRemainingText = '';
-            
-            for (let i = 0; i < valueLines.length; i++) {
-              if (dataY + lineHeight > pageHeight - bottomMargin) {
-                doc.addPage();
-                currentPageNumber++;
-                dataY = margin;
-                newRemainingText = valueLines.slice(i).join(' ');
-                needRecalculate = true;
-                break;
-              }
-              
-              if (isOnFirstPage && imagesLoaded > 0 && dataY >= imagesEndY && i < valueLines.length - 1) {
-                doc.text(valueLines[i], valueX, dataY);
-                dataY += lineHeight;
-                newRemainingText = valueLines.slice(i + 1).join(' ');
-                needRecalculate = true;
-                break;
-              }
-              
-              doc.text(valueLines[i], valueX, dataY);
-              dataY += lineHeight;
-            }
-            
-            if (needRecalculate) {
-              remainingText = newRemainingText;
-              continue;
-            }
-            
-            break;
-          }
-        } else {
-          doc.setFont(undefined, 'bold');
-          doc.setTextColor(0, 0, 0);
-          const columnNameText = `${columnName}:`;
-          const spaceWidth = doc.getTextWidth(' ');
-          const columnNameWidth = doc.getTextWidth(columnNameText);
-          
-          const isOnFirstPage = currentPageNumber === imagesPageNumber;
-          const isPastImageArea = isOnFirstPage && dataY >= imagesEndY;
-          const useFullWidth = imagesLoaded === 0 || !isOnFirstPage || isPastImageArea;
-          const totalAvailableWidth = useFullWidth ? (pageWidth - (margin * 2)) : leftWidth;
-          const valueWidth = totalAvailableWidth - columnNameWidth - spaceWidth;
-          const valueX = margin + columnNameWidth + spaceWidth;
-          
-          doc.setFont(undefined, 'normal');
-          doc.setTextColor(44, 62, 80);
-          const valueLines = doc.splitTextToSize(displayValue, valueWidth);
-          
-          if (valueLines.length > 0) {
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(0, 0, 0);
-            doc.text(columnNameText, margin, dataY);
-            
-            doc.setFont(undefined, 'normal');
-            doc.setTextColor(44, 62, 80);
-            doc.text(valueLines[0], valueX, dataY);
-            dataY += lineHeight;
-            
-            for (let i = 1; i < valueLines.length; i++) {
-              if (dataY + lineHeight > pageHeight - bottomMargin) {
-                doc.addPage();
-                currentPageNumber++;
-                dataY = margin;
-                const availableWidthNewPage = pageWidth - (margin * 2);
-                const remainingText = valueLines.slice(i).join(' ');
-                const valueLinesNewPage = doc.splitTextToSize(remainingText, availableWidthNewPage);
-                
-                for (let j = 0; j < valueLinesNewPage.length; j++) {
-                  if (dataY + lineHeight > pageHeight - bottomMargin) {
-                    doc.addPage();
-                    currentPageNumber++;
-                    dataY = margin;
-                  }
-                  doc.text(valueLinesNewPage[j], margin, dataY);
-                  dataY += lineHeight;
-                }
-                break;
-              }
-              
-              const isOnFirstPageForLine = currentPageNumber === imagesPageNumber;
-              const isPastImageAreaForLine = isOnFirstPageForLine && dataY >= imagesEndY;
-              const useFullWidthForLine = imagesLoaded === 0 || !isOnFirstPageForLine || isPastImageAreaForLine;
-              const availableWidthForLine = useFullWidthForLine ? (pageWidth - (margin * 2)) : leftWidth;
-              
-              if (useFullWidthForLine !== useFullWidth && i < valueLines.length - 1) {
-                const remainingText = valueLines.slice(i).join(' ');
-                const valueLinesRecalc = doc.splitTextToSize(remainingText, availableWidthForLine);
-                
-                for (let j = 0; j < valueLinesRecalc.length; j++) {
-                  if (dataY + lineHeight > pageHeight - bottomMargin) {
-                    doc.addPage();
-                    currentPageNumber++;
-                    dataY = margin;
-                  }
-                  doc.text(valueLinesRecalc[j], margin, dataY);
-                  dataY += lineHeight;
-                }
-                break;
-              }
-              
-              doc.text(valueLines[i], valueX, dataY);
-              dataY += lineHeight;
-            }
-          } else {
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(0, 0, 0);
-            doc.text(columnNameText, margin, dataY);
-            dataY += lineHeight;
-          }
-        }
-        
-        dataY += 2;
-      });
 
-      // Add spacing before next apple
-      if (appleIndex < rows.length - 1) {
-        if (dataY + 20 > pageHeight - bottomMargin) {
-          doc.addPage();
-        } else {
-          dataY += 20;
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+            doc.addImage(dataUrl, 'JPEG', xPos, yPos, imgWidth, imgHeight);
+            successfulImages++;
+          } catch (imgError) {
+            console.warn(`Failed to load image ${j + 1} for ${cultivarName}:`, imgError.message);
+          }
         }
+      }
+
+      // Add PDF to ZIP with safe filename
+      const pdfBlob = doc.output('blob');
+      const safeFileName = `${cultivarName}_${accession}`.replace(/[^a-zA-Z0-9_.-]/g, '_').substring(0, 100);
+      const fileName = `${safeFileName || `apple_${i + 1}`}.pdf`;
+      zip.file(fileName, pdfBlob);
+
+      if (setErrorMessage && (i + 1) % 5 === 0) {
+        setErrorMessage(`Creating PDF ${i + 1}/${rows.length}...`);
       }
     }
 
-    // Download the single PDF
-    console.log("PDF(All): Generating PDF blob...");
-    const pdfBlob = doc.output('blob');
-    console.log("PDF(All): PDF blob created, size:", (pdfBlob.size / 1024 / 1024).toFixed(2), "MB");
-    
-    // Use a more reliable download method
-    const url = window.URL.createObjectURL(pdfBlob);
+    // Generate and download ZIP
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
     const link = document.createElement('a');
-    link.href = url;
-    link.download = `appleverse_all_${rows.length}_apples.pdf`;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    console.log("PDF(All): Triggering download...");
-    
-    // Use setTimeout to ensure the link is ready
-    setTimeout(() => {
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }, 100);
-    }, 100);
+    link.href = URL.createObjectURL(zipBlob);
+    link.download = `appleverse_${rows.length}_pdfs.zip`;
+    link.click();
+    URL.revokeObjectURL(link.href);
 
-    const successMsg = `Downloaded PDF with all ${rows.length} apples.`;
-    console.log("PDF(All):", successMsg);
     if (setErrorMessage) {
-      setErrorMessage(successMsg);
-      setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert(successMsg);
+      setErrorMessage(`Successfully exported ${rows.length} PDFs as ZIP`);
+      setTimeout(() => setErrorMessage(null), 3000);
     }
   } catch (error) {
-    console.error("PDF(All) export error:", error);
-    console.error("PDF(All) error stack:", error.stack);
-    const errorMsg = `Failed to generate PDF(All): ${error.message || 'Unknown error'}`;
+    console.error('PDF(All) export error:', error);
     if (setErrorMessage) {
-      setErrorMessage(errorMsg);
+      setErrorMessage(`PDF export failed: ${error.message}`);
       setTimeout(() => setErrorMessage(null), 5000);
-    } else {
-      alert(errorMsg);
     }
   }
 }

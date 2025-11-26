@@ -1,19 +1,5 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 
-const uniq = (list, key) => {
-  if (!list || list.length === 0) return [];
-  
-  const uniqueValues = new Set();
-  list.forEach(item => {
-    const value = item?.[key];
-    if (value && value !== 'null' && value !== null) {
-      uniqueValues.add(String(value));
-    }
-  });
-  
-  return Array.from(uniqueValues).sort();
-};
-
 // SearchableDropdown component - custom dropdown with search inside
 const SearchableDropdown = React.memo(({ label, name, options, filterValue, onFilterChange }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -92,7 +78,12 @@ const SearchableDropdown = React.memo(({ label, name, options, filterValue, onFi
             outline: 'none'
           }}
         >
-          <span>{displayText}</span>
+          <span style={{ 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis', 
+            whiteSpace: 'nowrap',
+            maxWidth: '200px'
+          }}>{displayText}</span>
           <span style={{ 
             fontSize: '12px', 
             color: '#6b7280',
@@ -230,41 +221,33 @@ const SearchableDropdown = React.memo(({ label, name, options, filterValue, onFi
 });
 
 export default function FilterSidebar({ data, value, onChange, onReset, sortBy, onSortChange }) {
-  // Helper to get unique values from multiple possible field names
-  // Checks both direct fields and metadata fields
+  // Helper to get unique values - checks direct fields on the item
   const uniqMulti = (list, fieldNames) => {
     if (!list || list.length === 0) return [];
     const uniqueValues = new Set();
+    
     list.forEach(item => {
       for (const field of fieldNames) {
-        // Check direct field first
-        let value = item?.[field];
-        if (value && value !== 'null' && value !== null && value !== '') {
-          uniqueValues.add(String(value));
-          break; // Use first found value
-        }
-        
-        // Check metadata field if direct field not found
-        if (!value && item?.metadata) {
-          value = item.metadata[field];
-          if (value && value !== 'null' && value !== null && value !== '') {
-            uniqueValues.add(String(value));
-            break; // Use first found value
-          }
+        // Check direct field on item
+        let fieldValue = item?.[field];
+        if (fieldValue && fieldValue !== 'null' && fieldValue !== null && fieldValue !== '' && fieldValue !== undefined) {
+          uniqueValues.add(String(fieldValue).trim());
+          break;
         }
       }
     });
+    
     return Array.from(uniqueValues).sort();
   };
 
-  // Using multiple possible field name formats
-  // Check Excel column names first (as they're stored in metadata), then fallback to other formats
-  const acno = useMemo(() => uniqMulti(data, ["ACNO", "acno"]), [data]);
-  const accession = useMemo(() => uniqMulti(data, ["ACCESSION", "accession"]), [data]);
-  const countries = useMemo(() => uniqMulti(data, ["COUNTRY", "e origin country", "E Origin Country", "e_origin_country"]), [data]);
-  const provinces = useMemo(() => uniqMulti(data, ["PROVINCE/STATE", "e origin province", "E Origin Province", "e_origin_province"]), [data]);
-  const pedigrees = useMemo(() => uniqMulti(data, ["PEDIGREE DESCRIPTION", "e pedigree", "E pedigree", "E Pedigree", "e_pedigree"]), [data]);
-  const taxons = useMemo(() => uniqMulti(data, ["TAXON", "taxon"]), [data]);
+  // Using the ACTUAL field names from the data (direct fields, not metadata)
+  const acno = useMemo(() => uniqMulti(data, ["acno", "ACNO"]), [data]);
+  const accession = useMemo(() => uniqMulti(data, ["accession", "ACCESSION"]), [data]);
+  const countries = useMemo(() => uniqMulti(data, ["e_origin_country", "country", "COUNTRY"]), [data]);
+  const provinces = useMemo(() => uniqMulti(data, ["e_origin_province", "province_state", "PROVINCE/STATE"]), [data]);
+  // FIXED: Use pedigree_description (the actual field name in the data)
+  const pedigrees = useMemo(() => uniqMulti(data, ["pedigree_description", "e_pedigree", "PEDIGREE DESCRIPTION"]), [data]);
+  const taxons = useMemo(() => uniqMulti(data, ["taxon", "TAXON"]), [data]);
 
   // Handler for filter changes - stable reference
   const handleFilterChange = useCallback((name, filterValue) => {

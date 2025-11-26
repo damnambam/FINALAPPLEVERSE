@@ -1,1065 +1,701 @@
-// routes/appleRoutes.js - IMPROVED VERSION
+// FIXED: Complete appleRoutes.js with user-controlled duplicate handling
+// - Flexible field detection (CULTIVAR_NAME, CULTIVAR NAME, etc.)
+// - Sets required top-level schema fields (accession, cultivar_name)
+// - Two-pass duplicate handling: detect first, then let user decide
+
 import express from 'express';
+import Apple from '../models/Apple.js';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
 import fs from 'fs';
-import { Apple } from '../models/Apple.js';
-import { Admin } from '../models/Admin.js';
+import XLSX from 'xlsx';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const router = express.Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const __dirname_routes = __dirname; // Alias for consistency
-
-// ========================
-// MIDDLEWARE - Verify Admin Token
-// ========================
-const verifyAdminToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-  
-  console.log('🔐 Auth Header:', authHeader);
-  console.log('🔐 Token received:', token);
-  
-  if (!token) {
-    console.log('❌ No token provided');
-    return res.status(401).json({ error: 'No token provided' });
-  }
-
-  if (token && token.length > 0) {
-    console.log('✅ Token accepted');
-    const adminId = token.split('-')[1];
-    req.adminId = adminId;
-    next();
-  } else {
-    console.log('❌ Invalid token');
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-};
-
-// ========================
-// HELPER - Log Activity
-// ========================
-const logActivity = async (adminId, action, details) => {
-  try {
-    if (!adminId) {
-      console.log('⚠️ No adminId provided for activity log');
-      return;
-    }
-
-    await Admin.findByIdAndUpdate(
-      adminId,
-      {
-        $push: {
-          activityLog: {
-            action,
-            details,
-            timestamp: new Date()
-          }
-        }
-      }
-    );
-    console.log('📝 Activity logged:', action);
-  } catch (error) {
-    console.error('❌ Error logging activity:', error);
-  }
-};
-
-// ========================
-// HELPER - Normalize Field Names
-// ========================
-const normalizeAppleData = (data) => {
-  const normalized = {};
-  
-  // Comprehensive field mapping (same as before)
-  const fieldMap = {
-    'ACCESSION': 'accession',
-    'accession': 'accession',
-    'HARROW ACCESSION': 'accession',
-    'Accession': 'accession',
-    
-    'CULTIVAR NAME': 'cultivar_name',
-    'CULTIVAR_NAME': 'cultivar_name',
-    'cultivar_name': 'cultivar_name',
-    'Cultivar Name': 'cultivar_name',
-    'name': 'cultivar_name',
-    
-    // ... (all other field mappings same as before)
-    'SITE ID': 'site_id',
-    'PREFIX (ACP)': 'prefix_acp',
-    'ACNO': 'acno',
-    'LABEL NAME': 'label_name',
-    'FAMILY': 'family',
-    'GENUS': 'e_genus',
-    'SPECIES': 'e_species',
-    'TAXON': 'taxon',
-    'COUNTRY': 'e_origin_country',
-    'PROVINCE/STATE': 'e_origin_province',
-    'HABITAT': 'e_habitat',
-    'BREEDER OR COLLECTOR': 'breeder_or_collector',
-    'COOPERATOR': 'cooperator',
-    'INVENTORY TYPE': 'inventory_type',
-    'PLANT TYPE': 'plant_type',
-    'LIFE FORM': 'life_form',
-    'IS DISTRIBUTABLE?': 'is_distributable',
-    'FRUITSHAPE 115057': 'fruitshape_115057',
-    'SEEDCOLOR 115086': 'seedcolor_115086',
-    'FIRST BLOOM DATE': 'first_bloom_date',
-    'FULL BLOOM DATE': 'full_bloom_date',
-    'COLOUR': 'colour',
-    'DENSITY': 'density',
-    'CMT': 'cmt',
-    'NARATIVEKEYWORD': 'narativekeyword',
-    'FULL NARATIVE': 'full_narative',
-    'PEDIGREE DESCRIPTION': 'pedigree_description',
-    'AVAILABILITY STATUS': 'availability_status',
-    'IPR TYPE': 'ipr_type',
-    'LEVEL OF IMPROVEMENT': 'level_of_improvement',
-    'RELEASED DATE': 'released_date',
-    'COOPERATOR_NEW': 'cooperator_new',
-    // Add all other fields...
-  };
-  
-  // Process each field
-  Object.keys(data).forEach(key => {
-    if (key === 'customFields' || key === 'images' || key === 'metadata') {
-      normalized[key] = data[key];
-      return;
-    }
-    
-    // Skip IMAGES column (will be auto-populated)
-    if (key.toLowerCase().replace(/[^a-z]/g, '') === 'images') {
-      return;
-    }
-    
-    const normalizedKey = fieldMap[key];
-    if (normalizedKey) {
-      const value = data[key];
-      normalized[normalizedKey] = value !== null && value !== undefined ? String(value).trim() : '';
-    } else {
-      const customKey = key.toLowerCase().replace(/[^a-z0-9_]/g, '_');
-      if (customKey && customKey !== '' && customKey !== 'images') {
-        normalized[customKey] = data[key] !== null && data[key] !== undefined ? String(data[key]).trim() : '';
-      }
-    }
-  });
-  
-  // Set defaults
-  if (!normalized.accession) normalized.accession = '';
-  if (!normalized.cultivar_name) normalized.cultivar_name = '';
-  if (!normalized.e_genus) normalized.e_genus = 'Malus';
-  if (!normalized.e_species) normalized.e_species = 'domestica';
-  if (!normalized.family) normalized.family = 'Rosaceae';
-  if (!normalized.plant_type) normalized.plant_type = 'apple';
-  if (!normalized.status) normalized.status = 'AVAIL';
-  
-  return normalized;
-};
-
-// ========================
-// MULTER SETUP
-// ========================
+// ===========================
+// File Upload Configuration
+// ===========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '..', 'images'));
+    const dir = path.join(__dirname, '..', 'images');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const base = path.basename(file.originalname, ext);
-    const cleanBase = base.replace(/[^a-zA-Z0-9_]/g, '_');
-    cb(null, `${cleanBase}-${Date.now()}${ext}`);
-  },
+    // FIXED: Keep original filename to preserve MAL numbers and cultivar names
+    // Just sanitize special characters and add small random suffix to avoid exact duplicates
+    const originalName = file.originalname;
+    const ext = path.extname(originalName);
+    const baseName = path.basename(originalName, ext);
+    
+    // Sanitize: replace problematic characters but keep spaces, underscores, hyphens
+    const sanitized = baseName.replace(/[^a-zA-Z0-9\s_-]/g, '');
+    
+    // Add small random suffix to prevent overwriting files with same name
+    const suffix = Math.round(Math.random() * 999);
+    
+    // Final filename: "King of Pippins MAL0979_123.jpg"
+    cb(null, `${sanitized}_${suffix}${ext}`);
+  }
 });
 
-const upload = multer({ 
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+const upload = multer({
+  storage: storage,
+  limits: { 
+    fileSize: 50 * 1024 * 1024, // 50MB per file
+    files: 2000 // Max 2000 files
+  },
   fileFilter: (req, file, cb) => {
-    const validExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-    const hasValidExtension = validExtensions.test(file.originalname);
-    const hasImageMime = file.mimetype && file.mimetype.startsWith('image/');
-    
-    if (hasValidExtension || hasImageMime) {
+  if (file.fieldname === 'excelFile') {
+    const allowedExcelTypes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv'
+    ];
+    if (allowedExcelTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type: ${file.originalname}`));
+      cb(new Error('Only Excel and CSV files allowed for excelFile'));
     }
-  }
-});
-
-// ========================
-// SINGLE APPLE UPLOAD (unchanged)
-// ========================
-router.post('/single-upload', verifyAdminToken, upload.array('images', 10), async (req, res) => {
-  try {
-    console.log('📥 Single apple upload request received');
-    
-    const rawData = JSON.parse(req.body.appleData);
-    const appleData = normalizeAppleData(rawData);
-    
-    if (!appleData.cultivar_name) {
-      return res.status(400).json({ success: false, message: 'Cultivar name is required' });
+  } else if (file.fieldname === 'images' || file.fieldname === 'image') {  // ← ADD THIS
+    const allowedImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedImageTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files (JPEG, PNG, GIF, WEBP) allowed for images'));
     }
-    
-    if (!appleData.accession) {
-      return res.status(400).json({ success: false, message: 'Accession is required' });
-    }
-
-    const imagePaths = req.files ? req.files.map(file => `/images/${file.filename}`) : [];
-    
-    let customFields = {};
-    if (appleData.customFields) {
-      customFields = appleData.customFields;
-      delete appleData.customFields;
-    }
-
-    const newApple = new Apple({
-      ...appleData,
-      customFields,
-      images: imagePaths,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-
-    await newApple.save();
-
-    await logActivity(
-      req.adminId,
-      'Created apple variety',
-      `Created ${appleData.cultivar_name} (${appleData.accession}) with ${imagePaths.length} image(s)`
-    );
-
-    console.log('✅ Apple saved successfully:', newApple.cultivar_name);
-    
-    res.status(201).json({ 
-      success: true, 
-      message: 'Apple created successfully',
-      apple: newApple
-    });
-
-  } catch (error) {
-    console.error('❌ Error in single-upload:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Failed to create apple',
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// BULK UPLOAD WITH IMAGES - IMPROVED VERSION
-// ========================
-router.post('/bulk-upload-with-images', verifyAdminToken, upload.any(), async (req, res) => {
-  try {
-    console.log('📥 Bulk upload request received');
-    console.log('📸 Total files received:', req.files?.length || 0);
-    console.log('📦 Body keys:', Object.keys(req.body));
-
-    // ===========================
-    // STEP 1: Build Image Map by Apple Index
-    // ===========================
-    const imagesByAppleIndex = {};
-    
-    if (req.files && req.files.length > 0) {
-      req.files.forEach((file) => {
-        const match = file.fieldname.match(/images_(\d+)/);
-        
-        if (match) {
-          const appleIndex = parseInt(match[1]);
-          
-          if (!imagesByAppleIndex[appleIndex]) {
-            imagesByAppleIndex[appleIndex] = [];
-          }
-          
-          imagesByAppleIndex[appleIndex].push({
-            path: `/images/${file.filename}`,
-            filename: file.filename,
-            originalName: file.originalname
-          });
-          
-          console.log(`   ✅ Image "${file.originalname}" → Apple ${appleIndex}`);
-        }
-      });
-    }
-
-    console.log('🗂️ Image map:', Object.keys(imagesByAppleIndex).length, 'apples have images');
-
-    // ===========================
-    // STEP 2: Parse Apple Data
-    // ===========================
-    const apples = [];
-    
-    if (req.body.apples) {
-      try {
-        let applesArray = typeof req.body.apples === 'string' 
-          ? JSON.parse(req.body.apples) 
-          : req.body.apples;
-        
-        if (!Array.isArray(applesArray)) {
-          applesArray = [applesArray];
-        }
-        
-        applesArray.forEach((appleData, index) => {
-          const parsed = typeof appleData === 'string' ? JSON.parse(appleData) : appleData;
-          const images = imagesByAppleIndex[index] || [];
-          
-          apples.push({
-            index: index,
-            data: parsed,
-            images: images
-          });
-        });
-      } catch (e) {
-        console.error('Error parsing apples array:', e.message);
-      }
-    }
-    
-    if (apples.length === 0) {
-      Object.keys(req.body).forEach(key => {
-        if (key.startsWith('apples[')) {
-          try {
-            const appleData = JSON.parse(req.body[key]);
-            const indexMatch = key.match(/\[(\d+)\]/);
-            
-            if (indexMatch) {
-              const appleIndex = parseInt(indexMatch[1]);
-              const images = imagesByAppleIndex[appleIndex] || [];
-              
-              apples.push({
-                index: appleIndex,
-                data: appleData,
-                images: images
-              });
-            }
-          } catch (e) {
-            console.error(`Error parsing ${key}:`, e.message);
-          }
-        }
-      });
-    }
-
-    console.log('📊 Parsed apples:', apples.length);
-
-    if (apples.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No valid apple data found'
-      });
-    }
-
-    // ===========================
-    // STEP 3: Check for Duplicates
-    // ===========================
-    const duplicateResolutions = req.body.duplicateResolutions 
-      ? JSON.parse(req.body.duplicateResolutions) 
-      : null;
-
-    if (!duplicateResolutions) {
-      // First pass - check for duplicates
-      console.log('🔍 Checking for duplicates in database...');
-      
-      const duplicates = [];
-      
-      for (let i = 0; i < apples.length; i++) {
-        const item = apples[i];
-        const rawData = item.data;
-        const appleData = normalizeAppleData(rawData);
-        
-        if (!appleData.cultivar_name || !appleData.accession) continue;
-        
-        const existing = await Apple.findOne({
-          accession: appleData.accession,
-          cultivar_name: appleData.cultivar_name
-        });
-        
-        if (existing) {
-          duplicates.push({
-            index: i,
-            accession: appleData.accession,
-            cultivar_name: appleData.cultivar_name,
-            existingId: existing._id,
-            createdAt: existing.createdAt
-          });
-          console.log(`   ⚠️ Duplicate found: ${appleData.accession} - ${appleData.cultivar_name}`);
-        }
-      }
-      
-      if (duplicates.length > 0) {
-        console.log(`🔔 Found ${duplicates.length} duplicate(s) - asking user for resolution`);
-        return res.status(200).json({
-          success: false,
-          duplicates: duplicates,
-          message: `Found ${duplicates.length} duplicate(s). Please choose how to handle them.`
-        });
-      }
-    }
-
-    // ===========================
-    // STEP 4: Create/Update Apple Documents
-    // ===========================
-    const savedApples = [];
-    const errors = [];
-    let replacedCount = 0;
-    let duplicatedCount = 0;
-    let skippedCount = 0;
-
-    for (let i = 0; i < apples.length; i++) {
-      try {
-        const item = apples[i];
-        const rawData = item.data;
-        const appleData = normalizeAppleData(rawData);
-
-        console.log(`\n🍎 Processing apple ${i + 1}/${apples.length}:`);
-        console.log(`   Cultivar: ${appleData.cultivar_name}`);
-        console.log(`   Accession: ${appleData.accession}`);
-        console.log(`   Images: ${item.images.length}`);
-
-        // Validate required fields
-        if (!appleData.cultivar_name || !appleData.cultivar_name.trim()) {
-          errors.push({ 
-            index: item.index, 
-            cultivar: 'Unknown',
-            error: 'Missing cultivar name' 
-          });
-          console.log(`   ❌ Missing cultivar name`);
-          continue;
-        }
-        
-        if (!appleData.accession || !appleData.accession.trim()) {
-          errors.push({ 
-            index: item.index, 
-            cultivar: appleData.cultivar_name,
-            error: 'Missing accession' 
-          });
-          console.log(`   ❌ Missing accession`);
-          continue;
-        }
-
-        // Extract custom fields
-        let customFields = {};
-        if (appleData.customFields) {
-          customFields = appleData.customFields;
-          delete appleData.customFields;
-        }
-
-        // Get image paths
-        const imagePaths = item.images.map(img => img.path);
-
-        // ===========================
-        // NEW: Auto-populate IMAGES column
-        // ===========================
-        appleData.images_count = imagePaths.length;
-
-        // ===========================
-        // NEW: Handle duplicate resolution
-        // ===========================
-        if (duplicateResolutions && duplicateResolutions[i]) {
-          const resolution = duplicateResolutions[i];
-          
-          if (resolution === 'skip') {
-            console.log(`   ⏭️ Skipping (user choice)`);
-            skippedCount++;
-            continue;
-          } else if (resolution === 'replace') {
-            // Replace existing
-            const existing = await Apple.findOne({
-              accession: appleData.accession,
-              cultivar_name: appleData.cultivar_name
-            });
-            
-            if (existing) {
-              const updated = await Apple.findByIdAndUpdate(
-                existing._id,
-                {
-                  ...appleData,
-                  customFields,
-                  images: imagePaths,
-                  updatedAt: new Date()
-                },
-                { new: true }
-              );
-              
-              savedApples.push(updated);
-              replacedCount++;
-              console.log(`   🔄 Replaced existing entry`);
-              continue;
-            }
-          } else if (resolution === 'duplicate') {
-            // Create as duplicate (fall through to create)
-            console.log(`   📋 Creating duplicate entry`);
-            duplicatedCount++;
-          }
-        }
-
-        // Create new apple document
-        const newApple = new Apple({
-          ...appleData,
-          customFields,
-          images: imagePaths,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-
-        await newApple.save();
-        savedApples.push(newApple);
-
-        console.log(`   ✅ Saved successfully with ${imagePaths.length} image(s)`);
-
-      } catch (error) {
-        console.error(`❌ Error saving apple ${i}:`, error.message);
-        errors.push({ 
-          index: apples[i].index, 
-          cultivar: apples[i].data.CULTIVAR_NAME || apples[i].data.cultivar_name || 'Unknown',
-          error: error.message 
-        });
-      }
-    }
-
-    // ===========================
-    // STEP 5: Calculate Statistics
-    // ===========================
-    const totalImages = savedApples.reduce((sum, apple) => sum + (apple.images?.length || 0), 0);
-
-    // Log activity
-    await logActivity(
-      req.adminId,
-      'Bulk uploaded apple varieties',
-      `Uploaded ${savedApples.length} apple(s) with ${totalImages} image(s)` +
-      (replacedCount > 0 ? `, replaced ${replacedCount}` : '') +
-      (duplicatedCount > 0 ? `, duplicated ${duplicatedCount}` : '') +
-      (skippedCount > 0 ? `, skipped ${skippedCount}` : '')
-    );
-
-    console.log('\n📊 Upload Summary:');
-    console.log(`   ✅ Successful: ${savedApples.length} apples`);
-    console.log(`   📸 Total images: ${totalImages}`);
-    console.log(`   🔄 Replaced: ${replacedCount}`);
-    console.log(`   📋 Duplicated: ${duplicatedCount}`);
-    console.log(`   ⏭️ Skipped: ${skippedCount}`);
-    console.log(`   ❌ Failed: ${errors.length}`);
-
-    res.status(201).json({ 
-      success: true, 
-      message: `Successfully processed ${savedApples.length} apple(s)`,
-      stats: {
-        total: apples.length,
-        successful: savedApples.length,
-        failed: errors.length,
-        totalImages: totalImages,
-        replaced: replacedCount,
-        duplicated: duplicatedCount,
-        skipped: skippedCount
-      },
-      apples: savedApples,
-      errors: errors.length > 0 ? errors : undefined
-    });
-
-  } catch (error) {
-    console.error('❌ Error in bulk-upload-with-images:', error);
-    res.status(500).json({ 
-      success: false,
-      message: 'Failed to upload apples',
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// HELPER - Transform field names to match frontend expectations
-// Handles both schema field names (underscores) and actual DB field names (spaces with various casing)
-// ========================
-const transformAppleFields = (apple) => {
-  if (!apple) return apple;
-  
-  const transformed = { ...apple };
-  
-  // Preserve excelRowIndex for sorting
-  if (apple.excelRowIndex !== undefined) {
-    transformed.excelRowIndex = apple.excelRowIndex;
-  }
-  
-  // Helper to get value from various possible field name formats
-  const getField = (variations) => {
-    for (const field of variations) {
-      if (transformed[field] !== undefined && transformed[field] !== null && transformed[field] !== '') {
-        return transformed[field];
-      }
-    }
-    return '';
-  };
-  
-  // Normalize cultivar_name (handle various formats)
-  const cultivarName = getField([
-    'cultivar_name',
-    'CULTIVAR NAME',
-    'CULTIVAR_NAME',
-    'Cultivar Name',
-    'name'
-  ]);
-  if (cultivarName) {
-    transformed.cultivar_name = cultivarName;
-    transformed['CULTIVAR NAME'] = cultivarName;
-  }
-  
-  // Normalize accession (handle various formats)
-  const accession = getField(['accession', 'ACCESSION']);
-  if (accession) {
-    transformed.accession = accession;
-    transformed['ACCESSION'] = accession;
-  }
-  
-  // Transform origin country (handle various formats)
-  const country = getField([
-    'e_origin_country',
-    'E Origin Country',
-    'E_ORIGIN_COUNTRY',
-    'e origin country'
-  ]);
-  if (country) {
-    transformed['e origin country'] = country;
-  }
-  
-  // Transform origin province
-  const province = getField([
-    'e_origin_province',
-    'E Origin Province',
-    'E_ORIGIN_PROVINCE',
-    'e origin province'
-  ]);
-  if (province) {
-    transformed['e origin province'] = province;
-  }
-  
-  // Transform origin city
-  const city = getField([
-    'e_origin_city',
-    'E Origin City',
-    'E_ORIGIN_CITY',
-    'e origin city'
-  ]);
-  if (city) {
-    transformed['e origin city'] = city;
-  }
-  
-  // Transform pedigree
-  const pedigree = getField([
-    'e_pedigree',
-    'E pedigree',
-    'E Pedigree',
-    'E_PEDIGREE',
-    'e pedigree'
-  ]);
-  if (pedigree) {
-    transformed['e pedigree'] = pedigree;
-  }
-  
-  // Transform genus
-  const genus = getField([
-    'e_genus',
-    'E GENUS',
-    'E_GENUS',
-    'E Genus',
-    'e genus'
-  ]);
-  if (genus) {
-    transformed['e genus'] = genus;
-  }
-  
-  // Transform species
-  const species = getField([
-    'e_species',
-    'E SPECIES',
-    'E_SPECIES',
-    'E Species',
-    'e species'
-  ]);
-  if (species) {
-    transformed['e species'] = species;
-  }
-  
-  // Transform breeder
-  const breeder = getField([
-    'e_breeder',
-    'E Breeder',
-    'E_BREEDER',
-    'e breeder'
-  ]);
-  if (breeder) {
-    transformed['e breeder'] = breeder;
-  }
-  
-  // Transform collector
-  const collector = getField([
-    'e_collector',
-    'E Collector',
-    'E_COLLECTOR',
-    'e collector'
-  ]);
-  if (collector) {
-    transformed['e collector'] = collector;
-  }
-  
-  // Preserve images field (ensure it's always an array)
-  if (transformed.images !== undefined) {
-    transformed.images = Array.isArray(transformed.images) ? transformed.images : [];
-  } else if (transformed.Images !== undefined) {
-    transformed.images = Array.isArray(transformed.Images) ? transformed.Images : [];
-    transformed.Images = transformed.images;
   } else {
-    transformed.images = [];
+    cb(new Error('Unexpected field'));
   }
-  
-  return transformed;
+}
+});
+
+// ===========================
+// Helper: Flexible Field Detection
+// ===========================
+const findField = (headers, patterns) => {
+  return headers.find(key => {
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return patterns.some(pattern => {
+      if (typeof pattern === 'function') {
+        return pattern(normalized);
+      }
+      return normalized === pattern || normalized.includes(pattern);
+    });
+  });
 };
 
-// ========================
-// GET ALL APPLES (Root path - for LibraryV2)
-// GET ALL APPLES (unchanged)
-// ========================
+// ===========================
+// GET: All apples with pagination
+// ===========================
 router.get('/', async (req, res) => {
   try {
-    const searchQuery = req.query.search;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
     
-    let apples;
-    if (searchQuery) {
-      apples = await Apple.find({
+    console.log(`📊 Query params: page=${page}, limit=${limit}, search="${req.query.search || 'none'}"`);
+
+    let query = {};
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, 'i');
+      query = {
         $or: [
-          { cultivar_name: { $regex: searchQuery, $options: 'i' } },
-          { accession: { $regex: searchQuery, $options: 'i' } },
-          { acno: { $regex: searchQuery, $options: 'i' } },
-          { label_name: { $regex: searchQuery, $options: 'i' } },
-          { e_origin_country: { $regex: searchQuery, $options: 'i' } },
-          { colour: { $regex: searchQuery, $options: 'i' } }
+          { accession: searchRegex },
+          { cultivar_name: searchRegex },
+          { 'metadata.ACCESSION': searchRegex },
+          { 'metadata.CULTIVAR_NAME': searchRegex },
+          { 'metadata.CULTIVAR NAME': searchRegex },
+          { 'metadata.TAXON': searchRegex },
+          { 'metadata.NARATIVEKEYWORD': searchRegex },
+          { 'metadata.COUNTRY': searchRegex },
+          { 'metadata.PROVINCE/STATE': searchRegex }
         ]
-      })
-        .sort({ excelRowIndex: 1, createdAt: 1 })
-        .lean();
-    } else {
-      // Return all apples - sort by excelRowIndex to preserve Excel order, fallback to createdAt
-      apples = await Apple.find({})
-        .sort({ excelRowIndex: 1, createdAt: 1 })
-        .lean();
-      console.log(`📊 Fetching all apples: ${apples.length} found`);
-      
-      // Verify sorting - first should be lowest excelRowIndex
-      if (apples.length > 0) {
-        const firstCultivar = apples[0].cultivar_name || apples[0]['CULTIVAR NAME'] || 'Unknown';
-        console.log(`✅ First record after sort: ${firstCultivar} (excelRowIndex: ${apples[0].excelRowIndex})`);
-      }
+      };
     }
 
-    // Transform field names to match frontend expectations
-    const transformedApples = apples.map(transformAppleFields);
+    const startTime = Date.now();
     
-    // Log first record to verify order
-    if (transformedApples.length > 0) {
-      const first = transformedApples[0];
-      console.log(`📋 First record in API response: ${first.cultivar_name || first['CULTIVAR NAME']} (excelRowIndex: ${first.excelRowIndex})`);
-    }
-
-    res.json(transformedApples);
-  } catch (error) {
-    console.error('❌ Error fetching apples:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// GET ALL APPLES (/all alias)
-// ========================
-router.get('/all', async (req, res) => {
-  try {
-    const       apples = await Apple.find({})
-      .sort({ excelRowIndex: 1, createdAt: 1 })
+    const apples = await Apple.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
-
-    // Transform field names to match frontend expectations
-    const transformedApples = apples.map(transformAppleFields);
-
-    res.json({ 
-      success: true, 
-      count: transformedApples.length,
-      apples: transformedApples 
-    });
-  } catch (error) {
-    console.error('❌ Error fetching apples:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// GET SINGLE APPLE BY ID
-// GET SINGLE APPLE BY ID (unchanged)
-// ========================
-router.get('/:id', async (req, res) => {
-  try {
-    const apple = await Apple.findById(req.params.id).lean();
-
-    if (!apple) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Apple not found' 
-      });
-    }
-
-    // Transform field names to match frontend expectations
-    const transformedApple = transformAppleFields(apple);
-
-    res.json({ 
-      success: true, 
-      apple: transformedApple 
-    });
-  } catch (error) {
-    console.error('❌ Error fetching apple:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// UPDATE APPLE (unchanged)
-// ========================
-router.put('/:id', verifyAdminToken, upload.array('images', 10), async (req, res) => {
-  try {
-    const rawData = req.body.appleData ? JSON.parse(req.body.appleData) : req.body;
-    const appleData = normalizeAppleData(rawData);
     
-    const existingApple = await Apple.findById(req.params.id);
-    if (!existingApple) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Apple not found' 
-      });
-    }
-
-    const newImagePaths = req.files ? req.files.map(file => `/images/${file.filename}`) : [];
-    
-    if (newImagePaths.length > 0) {
-      if (appleData.keepExistingImages && appleData.existingImages) {
-        appleData.images = [...appleData.existingImages, ...newImagePaths];
-      } else {
-        appleData.images = newImagePaths;
+    // Convert metadata Map to plain object if needed
+    const processedApples = apples.map(apple => {
+      if (apple.metadata) {
+        if (apple.metadata instanceof Map || (apple.metadata.$type === 'Map')) {
+          const metadataObj = {};
+          if (apple.metadata instanceof Map) {
+            apple.metadata.forEach((value, key) => {
+              metadataObj[key] = value;
+            });
+          } else if (apple.metadata._doc) {
+            Object.assign(metadataObj, apple.metadata._doc);
+          } else {
+            Object.assign(metadataObj, apple.metadata);
+          }
+          apple.metadata = metadataObj;
+        }
       }
-    }
-
-    // Auto-update IMAGES column
-    appleData.images_count = appleData.images?.length || 0;
-    appleData.updatedAt = new Date();
-
-    const updatedApple = await Apple.findByIdAndUpdate(
-      req.params.id,
-      appleData,
-      { new: true, runValidators: true }
-    ).lean();
-
-    await logActivity(
-      req.adminId,
-      'Updated apple variety',
-      `Updated ${updatedApple.cultivar_name}${newImagePaths.length > 0 ? ` (added ${newImagePaths.length} new image(s))` : ''}`
-    );
-
-    console.log('✅ Apple updated:', updatedApple.cultivar_name);
-
-    // Transform field names to match frontend expectations
-    const transformedApple = transformAppleFields(updatedApple);
-
-    res.json({ 
-      success: true, 
-      message: 'Apple updated successfully',
-      apple: transformedApple 
+      return apple;
     });
-  } catch (error) {
-    console.error('❌ Error updating apple:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// DELETE APPLE (unchanged)
-// ========================
-router.delete('/:id', verifyAdminToken, async (req, res) => {
-  try {
-    const deletedApple = await Apple.findByIdAndDelete(req.params.id);
-
-    if (!deletedApple) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Apple not found' 
-      });
-    }
-
-    await logActivity(
-      req.adminId,
-      'Deleted apple variety',
-      `Deleted ${deletedApple.cultivar_name}`
-    );
-
-    res.json({ 
-      success: true, 
-      message: 'Apple deleted successfully' 
-    });
-  } catch (error) {
-    console.error('❌ Error deleting apple:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-
-// ========================
-// SEARCH APPLES
-// ========================
-router.get('/search/:query', async (req, res) => {
-  try {
-    const query = req.params.query;
     
-    const apples = await Apple.find({
-      $or: [
-        { cultivar_name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-        { color: { $regex: query, $options: 'i' } },
-        { taste: { $regex: query, $options: 'i' } }
-      ]
-    }).limit(50).lean();
-
-    // Transform field names to match frontend expectations
-    const transformedApples = apples.map(transformAppleFields);
-
-    res.json({ 
-      success: true, 
-      count: transformedApples.length,
-      apples: transformedApples 
-    });
-  } catch (error) {
-    console.error('❌ Error searching apples:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
-    });
-  }
-});
-// ========================
-// GET FILTER OPTIONS (for FilterSidebar)
-// ========================
-router.get('/filters/options', async (req, res) => {
-  try {
-    console.log('📊 Fetching filter options...');
+    const total = await Apple.countDocuments(query);
     
-    const db = mongoose.connection;
-    const applesCollection = db.collection('apples');
-    
-    // Get unique values for each filter field - try both schema names and actual DB field names
-    const [acnoValues1, acnoValues2, accessionValues1, accessionValues2, countryValues1, countryValues2, provinceValues1, provinceValues2, cityValues1, cityValues2, pedigreeValues1, pedigreeValues2] = await Promise.all([
-      applesCollection.distinct('acno'),
-      applesCollection.distinct('ACNO'),
-      applesCollection.distinct('accession'),
-      applesCollection.distinct('ACCESSION'),
-      applesCollection.distinct('e_origin_country'),
-      applesCollection.distinct('E Origin Country'),
-      applesCollection.distinct('e_origin_province'),
-      applesCollection.distinct('E Origin Province'),
-      applesCollection.distinct('e_origin_city'),
-      applesCollection.distinct('E Origin City'),
-      applesCollection.distinct('e_pedigree'),
-      applesCollection.distinct('E pedigree')
-    ]);
-    
-    // Combine results, preferring non-empty arrays
-    const acnoValues = (acnoValues1?.length > 0 ? acnoValues1 : acnoValues2) || [];
-    const accessionValues = (accessionValues1?.length > 0 ? accessionValues1 : accessionValues2) || [];
-    const countryValues = (countryValues1?.length > 0 ? countryValues1 : countryValues2) || [];
-    const provinceValues = (provinceValues1?.length > 0 ? provinceValues1 : provinceValues2) || [];
-    const cityValues = (cityValues1?.length > 0 ? cityValues1 : cityValues2) || [];
-    const pedigreeValues = (pedigreeValues1?.length > 0 ? pedigreeValues1 : pedigreeValues2) || [];
-
-    const filters = {
-      acno: (acnoValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
-      accession: (accessionValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
-      country: (countryValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
-      province: (provinceValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
-      city: (cityValues || []).filter(v => v && v !== 'null' && v !== null).sort(),
-      pedigree: (pedigreeValues || []).filter(v => v && v !== 'null' && v !== null).sort()
-    };
-
-    console.log(`✅ Filter options retrieved:`);
-    console.log(`   ACNO: ${filters.acno.length} values`);
-    console.log(`   ACCESSION: ${filters.accession.length} values`);
-    console.log(`   COUNTRY: ${filters.country.length} values`);
-    console.log(`   PROVINCE: ${filters.province.length} values`);
-    console.log(`   CITY: ${filters.city.length} values`);
-    console.log(`   PEDIGREE: ${filters.pedigree.length} values`);
+    const queryTime = Date.now() - startTime;
+    console.log(`Apple Query: ${queryTime}ms`);
+    console.log(`✅ Returned ${processedApples.length} apples (page ${page}/${Math.ceil(total / limit)})`);
 
     res.json({
-      success: true,
-      filters
+      apples: processedApples,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + processedApples.length < total,
+        hasLess: page > 1
+      }
     });
-  } catch (error) {
-    console.error('❌ Error fetching filter options:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+  } catch (err) {
+    console.error('❌ Error fetching apples:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// ========================
-// FIND IMAGE BY ACCESSION
-// ========================
+// ===========================
+// GET: Single apple by ID
+// ===========================
+router.get('/:id', async (req, res) => {
+  try {
+    const apple = await Apple.findById(req.params.id);
+    if (!apple) return res.status(404).json({ error: 'Apple not found' });
+    res.json(apple);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===========================
+// GET: Find image by accession
+// ===========================
 router.get('/find-image/:accession', async (req, res) => {
   try {
-    const accession = req.params.accession.toUpperCase();
+    const accession = req.params.accession;
     const imagesDir = path.join(__dirname, '..', 'images');
     
     if (!fs.existsSync(imagesDir)) {
-      return res.json({ success: false, images: [] });
+      return res.json({ success: false, message: 'Images directory not found', images: [] });
     }
     
     const files = fs.readdirSync(imagesDir);
-    const imageFiles = files.filter(f => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(f));
+    const matchingFiles = files.filter(file => 
+      file.toUpperCase().includes(accession.toUpperCase())
+    );
     
-    // Find all files that contain the accession number
-    const matchingFiles = imageFiles.filter(file => {
-      const upperFile = file.toUpperCase();
-      return upperFile.includes(accession);
-    });
-    
-    if (matchingFiles.length > 0) {
-      // Remove duplicates (case-insensitive filename comparison)
-      const uniqueFiles = [];
-      const seenFiles = new Set();
-      matchingFiles.forEach(file => {
-        const normalized = file.toLowerCase();
-        if (!seenFiles.has(normalized)) {
-          seenFiles.add(normalized);
-          uniqueFiles.push(file);
-        }
-      });
-      
-      // Return all unique matching files
-      const imagePaths = uniqueFiles.map(file => `/images/${file}`);
-      return res.json({ success: true, images: imagePaths });
+    if (matchingFiles.length === 0) {
+      return res.json({ success: false, message: 'No matching images found', images: [] });
     }
     
-    res.json({ success: false, images: [] });
-  } catch (error) {
-    console.error('❌ Error finding image:', error);
-    res.json({ success: false, images: [] });
+    const imagePaths = matchingFiles.map(file => `/images/${file}`);
+    res.json({ success: true, images: imagePaths });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, images: [] });
   }
 });
+
+// ===========================
+// POST: Batch find images
+// ===========================
+router.post('/find-images-batch', async (req, res) => {
+  try {
+    const { accessions } = req.body;
+    
+    if (!accessions || !Array.isArray(accessions)) {
+      return res.status(400).json({ success: false, error: 'accessions array required' });
+    }
+    
+    const imagesDir = path.join(__dirname, '..', 'images');
+    
+    if (!fs.existsSync(imagesDir)) {
+      return res.json({ success: false, message: 'Images directory not found', results: {} });
+    }
+    
+    const files = fs.readdirSync(imagesDir);
+    const results = {};
+    let found = 0;
+    
+    for (const accession of accessions) {
+      const matchingFiles = files.filter(file => 
+        file.toUpperCase().includes(accession.toUpperCase())
+      );
+      
+      if (matchingFiles.length > 0) {
+        results[accession] = matchingFiles.map(file => `/images/${file}`);
+        found++;
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      results, 
+      found, 
+      total: accessions.length 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, results: {} });
+  }
+});
+
+// ===========================
+// POST: Upload single image for an apple
+// ===========================
+router.post('/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+    
+    const imagePath = `/images/${req.file.filename}`;
+    
+    res.json({ 
+      success: true, 
+      imagePath: imagePath,
+      message: 'Image uploaded successfully' 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ===========================
+// POST: Bulk upload with images
+// FIXED: User-controlled duplicate handling
+// ===========================
+router.post('/bulk-upload-with-images', upload.fields([
+  { name: 'excelFile', maxCount: 1 },
+  { name: 'images', maxCount: 2000 }
+]), async (req, res) => {
+  let excelFilePath = null;
+  
+  try {
+    if (!req.files || !req.files.excelFile) {
+      return res.status(400).json({ error: 'No Excel file uploaded' });
+    }
+
+    const excelFile = req.files.excelFile[0];
+    excelFilePath = excelFile.path;
+    const uploadedImages = req.files.images || [];
+    
+    // Parse Excel/CSV file
+    const workbook = XLSX.readFile(excelFile.path);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+      raw: false,
+      defval: '',
+      blankrows: false
+    });
+
+    if (!jsonData || jsonData.length === 0) {
+      fs.unlinkSync(excelFilePath);
+      return res.status(400).json({ error: 'Excel file is empty or invalid' });
+    }
+
+    console.log(`📋 Parsed ${jsonData.length} rows from file`);
+
+    // ===== FLEXIBLE FIELD DETECTION =====
+    const headers = Object.keys(jsonData[0]);
+    console.log(`📋 Headers found: ${headers.join(', ')}`);
+    
+    // Find ACCESSION field
+    const accessionField = findField(headers, [
+      'accession',
+      (n) => n.includes('accession'),
+      'harrowaccession'
+    ]);
+    
+    // Find CULTIVAR NAME field (handles CULTIVAR_NAME, CULTIVAR NAME, etc.)
+    const cultivarField = findField(headers, [
+      'cultivarname',
+      (n) => n.includes('cultivar') && n.includes('name'),
+      'name'
+    ]);
+
+    console.log(`📋 Detected fields - Accession: "${accessionField}", Cultivar: "${cultivarField}"`);
+
+    if (!accessionField) {
+      fs.unlinkSync(excelFilePath);
+      return res.status(400).json({ 
+        error: `Missing ACCESSION column. Found headers: ${headers.slice(0, 10).join(', ')}${headers.length > 10 ? '...' : ''}`
+      });
+    }
+    
+    if (!cultivarField) {
+      fs.unlinkSync(excelFilePath);
+      return res.status(400).json({ 
+        error: `Missing CULTIVAR NAME column. Found headers: ${headers.slice(0, 10).join(', ')}${headers.length > 10 ? '...' : ''}`
+      });
+    }
+
+    // Get duplicate handling mode
+    const handleDuplicates = req.body.handleDuplicates || 'detect';
+    let duplicateResolutions = {};
+    
+    if (req.body.duplicateResolutions) {
+      try {
+        duplicateResolutions = JSON.parse(req.body.duplicateResolutions);
+      } catch (e) {
+        console.log('⚠️ Could not parse duplicateResolutions:', e.message);
+      }
+    }
+
+    console.log(`🔄 Mode: ${handleDuplicates}, Resolutions provided: ${Object.keys(duplicateResolutions).length}`);
+
+    // ===== BUILD IMAGE MAP =====
+    const imageMap = new Map();
+    uploadedImages.forEach(file => {
+      const filename = file.originalname;
+      // Match MAL followed by digits (e.g., MAL0001, MAL1234)
+      const matches = filename.match(/MAL\d+/gi);
+      if (matches && matches.length > 0) {
+        matches.forEach(accessionMatch => {
+          const acc = accessionMatch.toUpperCase();
+          if (!imageMap.has(acc)) imageMap.set(acc, []);
+          imageMap.get(acc).push(`/images/${file.filename}`);
+        });
+      }
+    });
+    
+    console.log(`🖼️ Image map built: ${imageMap.size} accessions with images`);
+
+    // ===== FIRST PASS: DETECT DUPLICATES =====
+    if (handleDuplicates === 'detect') {
+      console.log('🔍 First pass: Detecting duplicates...');
+      const duplicatesFound = [];
+      
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        const accession = row[accessionField]?.toString().trim() || '';
+        const cultivarName = row[cultivarField]?.toString().trim() || '';
+        
+        if (!accession || !cultivarName) continue;
+
+        const existingApple = await Apple.findOne({
+          $or: [
+            { accession: accession },
+            { 'metadata.ACCESSION': accession },
+            { 'metadata.accession': accession }
+          ]
+        });
+
+        if (existingApple) {
+          duplicatesFound.push({
+            index: i,
+            row: i + 2,
+            accession: accession,
+            cultivar_name: cultivarName,
+            existingId: existingApple._id.toString()
+          });
+        }
+      }
+
+      // If duplicates found, return them for user decision
+      if (duplicatesFound.length > 0) {
+        console.log(`⚠️ Found ${duplicatesFound.length} duplicates - returning for user decision`);
+        
+        // Keep the uploaded images but clean up excel file
+        fs.unlinkSync(excelFilePath);
+        
+        return res.json({
+          success: false,
+          needsResolution: true,
+          duplicates: duplicatesFound,
+          totalRows: jsonData.length,
+          message: `Found ${duplicatesFound.length} duplicate(s). Please decide how to handle each one.`
+        });
+      }
+      
+      console.log('✅ No duplicates found, proceeding with insert...');
+    }
+
+    // ===== SECOND PASS: PROCESS ALL ROWS =====
+    console.log('📝 Processing rows...');
+    
+    const results = {
+      total: jsonData.length,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+      duplicates: 0,
+      errors: []
+    };
+
+    for (let i = 0; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      
+      try {
+        // Extract required fields using detected column names
+        const accession = row[accessionField]?.toString().trim() || '';
+        const cultivarName = row[cultivarField]?.toString().trim() || '';
+        
+        // Validate required fields
+        if (!accession) {
+          results.errors.push({ 
+            row: i + 2, 
+            error: 'Missing ACCESSION',
+            accession: '(empty)',
+            cultivar: cultivarName || '(empty)'
+          });
+          results.skipped++;
+          continue;
+        }
+
+        if (!cultivarName) {
+          results.errors.push({ 
+            row: i + 2, 
+            error: 'Missing CULTIVAR NAME',
+            accession: accession,
+            cultivar: '(empty)'
+          });
+          results.skipped++;
+          continue;
+        }
+
+        // Check for existing apple
+        const existingApple = await Apple.findOne({
+          $or: [
+            { accession: accession },
+            { 'metadata.ACCESSION': accession },
+            { 'metadata.accession': accession }
+          ]
+        });
+
+        // Get images for this accession
+        let imagePaths = [];
+        if (imageMap.has(accession.toUpperCase())) {
+          imagePaths = imageMap.get(accession.toUpperCase());
+        }
+        
+        // Add image paths to row data
+        row['IMAGES'] = imagePaths.join(', ');
+
+        if (existingApple) {
+          results.duplicates++;
+          
+          // Get user's decision for this duplicate (by index)
+          const resolution = duplicateResolutions[i] || duplicateResolutions[i.toString()] || 'skip';
+          
+          console.log(`🔄 Row ${i + 2}: Duplicate "${accession}" - User chose: ${resolution}`);
+          
+          if (resolution === 'replace') {
+            // Update existing apple
+            existingApple.accession = accession;
+            existingApple.cultivar_name = cultivarName;
+            existingApple.metadata = row;
+            existingApple.updatedAt = new Date();
+            
+            if (imagePaths.length > 0) {
+              existingApple.images = imagePaths;
+              existingApple.images_count = imagePaths.length;
+            }
+            
+            await existingApple.save();
+            results.updated++;
+            console.log(`   ✅ Replaced existing entry`);
+            
+          } else if (resolution === 'duplicate') {
+            // Create new entry (allow duplicate)
+            const newApple = new Apple({
+              accession: accession,
+              cultivar_name: cultivarName,
+              metadata: row,
+              images: imagePaths,
+              images_count: imagePaths.length,
+              excelRowIndex: i + 2
+            });
+            
+            await newApple.save();
+            results.inserted++;
+            console.log(`   ✅ Created as new entry (duplicate allowed)`);
+            
+          } else {
+            // Skip this duplicate
+            results.skipped++;
+            console.log(`   ⏭️ Skipped`);
+          }
+          
+        } else {
+          // New apple - insert it
+          const newApple = new Apple({
+            accession: accession,
+            cultivar_name: cultivarName,
+            metadata: row,
+            images: imagePaths,
+            images_count: imagePaths.length,
+            excelRowIndex: i + 2
+          });
+          
+          await newApple.save();
+          results.inserted++;
+          console.log(`✅ Row ${i + 2}: Inserted "${accession}" - "${cultivarName}"`);
+        }
+        
+      } catch (err) {
+        console.error(`❌ Row ${i + 2} error:`, err.message);
+        results.errors.push({ 
+          row: i + 2, 
+          error: err.message,
+          accession: row[accessionField] || '(unknown)',
+          cultivar: row[cultivarField] || '(unknown)'
+        });
+        results.skipped++;
+      }
+    }
+
+    // Clean up excel file
+    if (fs.existsSync(excelFilePath)) {
+      fs.unlinkSync(excelFilePath);
+    }
+
+    console.log('📊 ===== FINAL RESULTS =====');
+    console.log(`   Total rows: ${results.total}`);
+    console.log(`   Inserted: ${results.inserted}`);
+    console.log(`   Updated: ${results.updated}`);
+    console.log(`   Skipped: ${results.skipped}`);
+    console.log(`   Duplicates found: ${results.duplicates}`);
+    console.log(`   Errors: ${results.errors.length}`);
+    
+    if (results.errors.length > 0) {
+      console.log('   Error details:', results.errors.slice(0, 5));
+    }
+
+    res.json({
+      success: true,
+      message: 'Bulk upload completed',
+      results
+    });
+    
+  } catch (err) {
+    console.error('❌ Bulk upload error:', err);
+    
+    // Clean up file on error
+    if (excelFilePath && fs.existsSync(excelFilePath)) {
+      try { fs.unlinkSync(excelFilePath); } catch(e) {}
+    }
+    
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===========================
+// PUT: Update apple
+// ===========================
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updateData = { ...req.body };
+    
+    // Handle images array if provided
+    if (updateData.images && Array.isArray(updateData.images)) {
+      console.log(`📸 Updating images for apple ${id}: ${updateData.images.length} images`);
+    }
+    
+    // Update the apple record
+    const updatedApple = await Apple.findByIdAndUpdate(
+      id,
+      { 
+        ...updateData,
+        images: updateData.images,  // Save the images array
+        images_count: updateData.images ? updateData.images.length : 0,
+        updatedAt: new Date() 
+      },
+      { new: true, runValidators: true }
+    );
+    
+    if (!updatedApple) {
+      return res.status(404).json({ error: 'Apple not found' });
+    }
+    
+    console.log(`✅ Apple ${id} updated successfully with ${updatedApple.images?.length || 0} images`);
+    
+    res.json({
+      success: true,
+      message: 'Apple updated successfully',
+      apple: updatedApple
+    });
+  } catch (err) {
+    console.error('❌ Update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===========================
+// DELETE: Delete apple
+// ===========================
+router.delete('/:id', async (req, res) => {
+  try {
+    const deletedApple = await Apple.findByIdAndDelete(req.params.id);
+    
+    if (!deletedApple) {
+      return res.status(404).json({ error: 'Apple not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Apple deleted successfully',
+      apple: deletedApple
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===========================
+// DELETE: Remove image file from disk
+// ===========================
+router.delete('/image/:filename', async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const imagePath = path.join(__dirname, '..', 'images', filename);
+    
+    // Security check: make sure it's actually in the images folder
+    if (!imagePath.startsWith(path.join(__dirname, '..', 'images'))) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid file path' 
+      });
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(imagePath)) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Image file not found' 
+      });
+    }
+    
+    // Delete the file
+    fs.unlinkSync(imagePath);
+    console.log(`🗑️ Deleted image: ${filename}`);
+    
+    res.json({ 
+      success: true, 
+      message: 'Image deleted successfully' 
+    });
+  } catch (err) {
+    console.error('❌ Error deleting image:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
+  }
+});
+
 export default router;

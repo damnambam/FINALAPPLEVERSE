@@ -1,10 +1,239 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './createApple.css';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle, RefreshCw, Copy, XCircle } from 'lucide-react';
+import { ArrowLeft, Upload, FileSpreadsheet, FileImage, CheckCircle, AlertCircle, RefreshCw, Copy, XCircle, Search, ArrowUp, ArrowDown } from 'lucide-react';
+
+// ===========================
+// SearchableDropdown Component
+// ===========================
+const SearchableDropdown = ({ images, value, onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredImages = images.filter(img =>
+    img.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectedImage = images.find(img => img.name === value);
+
+  return (
+    <div ref={dropdownRef} style={{ position: 'relative', width: '100%' }}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          padding: '10px',
+          border: '2px solid #d1d5db',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          background: 'white',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}
+      >
+        <span style={{ color: value ? '#111827' : '#9ca3af' }}>
+          {value ? selectedImage?.name || value : placeholder}
+        </span>
+        <span style={{ fontSize: '12px', color: '#6b7280' }}>▼</span>
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: '4px',
+            background: 'white',
+            border: '2px solid #d1d5db',
+            borderRadius: '6px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+            zIndex: 1000,
+            maxHeight: '300px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px', background: '#f3f4f6', borderRadius: '4px' }}>
+              <Search size={16} color="#6b7280" />
+              <input
+                type="text"
+                placeholder="Search images..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  outline: 'none',
+                  width: '100%',
+                  fontSize: '14px'
+                }}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div style={{ overflowY: 'auto', maxHeight: '240px' }}>
+            <div
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+                setSearchTerm('');
+              }}
+              style={{
+                padding: '10px',
+                cursor: 'pointer',
+                borderBottom: '1px solid #f3f4f6',
+                color: '#6b7280',
+                fontSize: '14px',
+                background: !value ? '#f9fafb' : 'white'
+              }}
+              onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
+              onMouseLeave={(e) => e.target.style.background = !value ? '#f9fafb' : 'white'}
+            >
+              -- No Image (Skip) --
+            </div>
+
+            {filteredImages.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' }}>
+                No images found
+              </div>
+            ) : (
+              filteredImages.map((img, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    onChange(img.name);
+                    setIsOpen(false);
+                    setSearchTerm('');
+                  }}
+                  style={{
+                    padding: '10px',
+                    cursor: 'pointer',
+                    borderBottom: idx < filteredImages.length - 1 ? '1px solid #f3f4f6' : 'none',
+                    fontSize: '14px',
+                    background: value === img.name ? '#eff6ff' : 'white',
+                    color: value === img.name ? '#2563eb' : '#111827'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = '#f3f4f6'}
+                  onMouseLeave={(e) => e.target.style.background = value === img.name ? '#eff6ff' : 'white'}
+                >
+                  {img.name}
+                </div>
+              ))
+            )}
+          </div>
+
+          {filteredImages.length > 0 && (
+            <div style={{ padding: '6px 8px', borderTop: '1px solid #e5e7eb', fontSize: '12px', color: '#6b7280', background: '#f9fafb' }}>
+              {filteredImages.length} image{filteredImages.length !== 1 ? 's' : ''} {searchTerm ? 'found' : 'available'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===========================
+// Scroll Buttons Component
+// ===========================
+const ScrollButtons = () => {
+  const [showButtons, setShowButtons] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowButtons(window.scrollY > 200);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollToBottom = () => {
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
+
+  if (!showButtons) return null;
+
+  return (
+    <div style={{
+      position: 'fixed',
+      right: '24px',
+      bottom: '24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: 1000
+    }}>
+      <button
+        onClick={scrollToTop}
+        style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          border: 'none',
+          color: 'white',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          transition: 'transform 0.2s'
+        }}
+        onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+        onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+        title="Scroll to top"
+      >
+        <ArrowUp size={24} />
+      </button>
+      <button
+        onClick={scrollToBottom}
+        style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          border: 'none',
+          color: 'white',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          transition: 'transform 0.2s'
+        }}
+        onMouseEnter={(e) => e.target.style.transform = 'scale(1.1)'}
+        onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+        title="Scroll to bottom"
+      >
+        <ArrowDown size={24} />
+      </button>
+    </div>
+  );
+};
 
 export default function CreateApple() {
   const navigate = useNavigate();
@@ -22,14 +251,12 @@ export default function CreateApple() {
   const [duplicates, setDuplicates] = useState([]);
   const [duplicateResolutions, setDuplicateResolutions] = useState({});
 
-  // Statistics
   const [stats, setStats] = useState({
     matched: 0,
     unmatchedImages: 0,
     unmatchedApples: 0
   });
 
-  // Back to start
   const handleBackToStart = () => {
     setStep(0);
     setCsvFile(null);
@@ -46,7 +273,6 @@ export default function CreateApple() {
     setStats({ matched: 0, unmatchedImages: 0, unmatchedApples: 0 });
   };
 
-  // STEP 1: Handle CSV/Excel Upload
   const handleCsvChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -62,9 +288,6 @@ export default function CreateApple() {
     setCsvFile(file);
   };
 
-  // ===========================
-  // IMPROVED: Better Validation - List ALL Errors
-  // ===========================
   const handleCsvUpload = async () => {
     if (!csvFile) {
       setError('Please select a CSV or Excel file to upload.');
@@ -78,7 +301,6 @@ export default function CreateApple() {
       let parsedData = [];
       const fileName = csvFile.name.toLowerCase();
 
-      // Handle Excel files (.xlsx, .xls)
       if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
         const arrayBuffer = await csvFile.arrayBuffer();
         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -87,9 +309,7 @@ export default function CreateApple() {
           defval: '',
           raw: false
         });
-      } 
-      // Handle CSV files
-      else if (fileName.endsWith('.csv')) {
+      } else if (fileName.endsWith('.csv')) {
         const text = await csvFile.text();
         const workbook = XLSX.read(text, { type: 'string' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -99,29 +319,25 @@ export default function CreateApple() {
         });
       }
 
-      // Check if file is empty
       if (!parsedData || parsedData.length === 0) {
         setError('❌ The file is empty. Please upload a file that contains apple data.');
         setLoading(false);
         return;
       }
 
-      // Validate that there are mandatory columns
       const firstRow = parsedData[0];
       const headers = Object.keys(firstRow);
       
-      // Check for cultivar name column
       const cultivarField = headers.find(key => {
         const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
         return (
-          normalized.includes('cultivar') && normalized.includes('name') ||
+          (normalized.includes('cultivar') && normalized.includes('name')) ||
           normalized === 'name' ||
           normalized === 'cultivarname' ||
           normalized === 'cultivar'
         );
       });
       
-      // Check for accession column
       const accessionField = headers.find(key => {
         const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
         return (
@@ -142,13 +358,10 @@ export default function CreateApple() {
         return;
       }
 
-      // ===========================
-      // NEW: Collect ALL validation errors
-      // ===========================
       const validationErrors = [];
       
       parsedData.forEach((row, index) => {
-        const rowNumber = index + 2; // +2 because index 0 is row 2 (after header)
+        const rowNumber = index + 2;
         const cultivarValue = row[cultivarField];
         const accessionValue = row[accessionField];
         
@@ -171,7 +384,6 @@ export default function CreateApple() {
         }
       });
       
-      // If there are validation errors, show ALL of them
       if (validationErrors.length > 0) {
         const errorList = validationErrors.slice(0, 10).map(item => 
           `Row ${item.row}: ${item.errors.join(', ')}`
@@ -189,7 +401,6 @@ export default function CreateApple() {
         return;
       }
 
-      // Check for duplicate entries within the CSV
       const seen = new Set();
       const duplicatesInFile = [];
      
@@ -220,7 +431,6 @@ export default function CreateApple() {
         return;
       }
 
-      // Remove IMAGES column if present (will be auto-populated after upload)
       parsedData.forEach(row => {
         Object.keys(row).forEach(key => {
           if (key.toLowerCase().replace(/[^a-z]/g, '') === 'images') {
@@ -231,9 +441,7 @@ export default function CreateApple() {
 
       setCsvData(parsedData);
       console.log('✅ File parsed:', parsedData.length, 'rows');
-      console.log('✅ Validation passed - no missing fields');
      
-      // Automatically move to Step 2
       setStep(2);
     } catch (err) {
       console.error('❌ Parse error:', err);
@@ -243,7 +451,6 @@ export default function CreateApple() {
     }
   };
 
-  // STEP 2: Handle ZIP Upload
   const handleZipChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -258,9 +465,6 @@ export default function CreateApple() {
     setImagesZip(file);
   };
 
-  // ===========================
-  // IMPROVED: Better Symbol Handling in Image Matching
-  // ===========================
   const handleMatchImages = async () => {
     if (!imagesZip) {
       setError('Please select a ZIP file containing images.');
@@ -271,14 +475,34 @@ export default function CreateApple() {
     setError('');
 
     try {
+      console.time('ZIP Extraction');
       const zip = new JSZip();
       const contents = await zip.loadAsync(imagesZip);
      
+      // Helper to get MIME type from extension
+      const getMimeType = (filename) => {
+        const ext = filename.toLowerCase().split('.').pop();
+        const mimeTypes = {
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'gif': 'image/gif',
+          'webp': 'image/webp',
+          'bmp': 'image/bmp'
+        };
+        return mimeTypes[ext] || 'image/jpeg';
+      };
+
       const imageFiles = [];
       for (const [filename, file] of Object.entries(contents.files)) {
         if (!file.dir && /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(filename)) {
-          const blob = await file.async('blob');
+          const arrayBuffer = await file.async('arraybuffer');
           const cleanFilename = filename.split('/').pop();
+          const mimeType = getMimeType(cleanFilename);
+          
+          // Create blob with correct MIME type
+          const blob = new Blob([arrayBuffer], { type: mimeType });
+          
           imageFiles.push({
             name: cleanFilename,
             blob: blob,
@@ -286,6 +510,7 @@ export default function CreateApple() {
           });
         }
       }
+      console.timeEnd('ZIP Extraction');
 
       if (imageFiles.length === 0) {
         setError('No valid image files found in the ZIP.');
@@ -296,10 +521,10 @@ export default function CreateApple() {
       console.log('✅ Extracted images:', imageFiles.length);
       setExtractedImages(imageFiles);
 
-      // Match images to apples
+      console.time('Image Matching');
       performMatching(imageFiles);
+      console.timeEnd('Image Matching');
      
-      // Move to Step 3
       setStep(3);
     } catch (err) {
       console.error('❌ ZIP extraction error:', err);
@@ -309,22 +534,18 @@ export default function CreateApple() {
     }
   };
 
-  // ===========================
-  // IMPROVED: Better matching with ALL symbols supported
-  // ===========================
   const performMatching = (images) => {
     const matched = [];
     const unmatchedImgs = [];
     const unmatchedApps = [];
 
-    // Get field names
     const firstRow = csvData[0];
     const headers = Object.keys(firstRow);
     
     const cultivarField = headers.find(key => {
       const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
       return (
-        normalized.includes('cultivar') && normalized.includes('name') ||
+        (normalized.includes('cultivar') && normalized.includes('name')) ||
         normalized === 'name' ||
         normalized === 'cultivarname'
       );
@@ -338,7 +559,6 @@ export default function CreateApple() {
       );
     });
 
-    // Track which images have been matched
     const matchedImageNames = new Set();
 
     csvData.forEach((apple, appleIndex) => {
@@ -347,37 +567,24 @@ export default function CreateApple() {
      
       if (!cultivarName || !accessionNumber) return;
 
-      // ===========================
-      // IMPROVED: Better pattern matching with symbol support
-      // ===========================
-      // Create multiple search patterns with different symbol handling
       const createSearchPattern = (text) => {
         if (!text) return '';
-        return text.toLowerCase()
-          .replace(/[^a-z0-9]/g, ''); // Remove ALL non-alphanumeric
+        return text.toLowerCase().replace(/[^a-z0-9]/g, '');
       };
 
       const accessionPattern = createSearchPattern(accessionNumber);
       const cultivarPattern = createSearchPattern(cultivarName);
-      const combinedPattern = createSearchPattern(`${accessionNumber}_${cultivarName}`);
       
-      // Find matching images
       const appleImages = [];
       
       for (const img of images) {
-        if (matchedImageNames.has(img.name)) continue; // Skip already matched
+        if (matchedImageNames.has(img.name)) continue;
         
         const cleanImgName = createSearchPattern(img.name);
        
-        // Try multiple matching strategies
         const isMatch = 
-          // Strategy 1: Exact accession match
           (accessionPattern.length > 0 && cleanImgName.includes(accessionPattern)) ||
-          // Strategy 2: Cultivar name match (only if > 3 chars to avoid false positives)
           (cultivarPattern.length > 3 && cleanImgName.includes(cultivarPattern)) ||
-          // Strategy 3: Combined pattern
-          (combinedPattern.length > 0 && cleanImgName.includes(combinedPattern)) ||
-          // Strategy 4: Image starts with accession
           (accessionPattern.length > 0 && cleanImgName.startsWith(accessionPattern));
 
         if (isMatch) {
@@ -405,7 +612,6 @@ export default function CreateApple() {
       }
     });
 
-    // Find unmatched images
     unmatchedImgs.push(...images.filter(img => !matchedImageNames.has(img.name)));
 
     setMatchedData(matched);
@@ -425,7 +631,6 @@ export default function CreateApple() {
     });
   };
 
-  // Handle manual matching
   const handleManualMatch = (appleIndex, imageName) => {
     const newMatches = { ...manualMatches };
     newMatches[appleIndex] = imageName;
@@ -438,9 +643,6 @@ export default function CreateApple() {
     }));
   };
 
-  // ===========================
-  // NEW: Handle duplicate resolution
-  // ===========================
   const handleDuplicateResolution = (index, action) => {
     const newResolutions = { ...duplicateResolutions };
     newResolutions[index] = action;
@@ -448,13 +650,13 @@ export default function CreateApple() {
   };
 
   // ===========================
-  // IMPROVED: Check for duplicates before saving
+  // FIXED: Send actual Excel file and use correct 'images' field name
   // ===========================
   const handleSaveToDatabase = async () => {
     setLoading(true);
 
     try {
-      // Combine matched data with manual matches
+      // Combine matched and unmatched data
       const finalData = [...matchedData];
      
       unmatchedApples.forEach((item) => {
@@ -471,7 +673,6 @@ export default function CreateApple() {
             });
           }
         } else {
-          // Include apples without images
           finalData.push({
             appleIndex: item.appleIndex,
             apple: item.apple,
@@ -485,24 +686,25 @@ export default function CreateApple() {
 
       console.log('💾 Preparing to save:', finalData.length, 'entries');
 
-      // Create FormData for upload
       const formData = new FormData();
-     
-      // Add apple data and images
+      
+      // FIXED: Send the actual CSV/Excel file that was uploaded
+      formData.append('excelFile', csvFile);
+      
+      // FIXED: Use 'images' field name (what multer expects)
+      // Add all images - backend matches by accession in filename
       finalData.forEach((item) => {
-        formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
-       
         if (item.images && item.images.length > 0) {
           item.images.forEach((img) => {
-            formData.append(`images_${item.appleIndex}`, img.blob, img.name);
+            // Keep original filename - backend extracts MAL#### pattern
+            formData.append('images', img.blob, img.name);
           });
         }
-        
-        // Add image count for backend to auto-populate IMAGES column
-        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
       });
+      
+      // Add duplicate handling preference
+      formData.append('handleDuplicates', 'detect');
 
-      // Get admin token
       const adminToken = localStorage.getItem('adminToken');
 
       if (!adminToken) {
@@ -512,10 +714,7 @@ export default function CreateApple() {
         return;
       }
 
-      // ===========================
-      // NEW: Check for duplicates first
-      // ===========================
-      console.log('🔍 Checking for duplicates in database...');
+      console.log('🔍 Uploading to database...');
       
       const response = await axios.post(
         'http://localhost:5000/api/apples/bulk-upload-with-images', 
@@ -524,27 +723,33 @@ export default function CreateApple() {
           headers: {
             'Content-Type': 'multipart/form-data',
             'Authorization': `Bearer ${adminToken}`
+          },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload progress: ${percentCompleted}%`);
           }
         }
       );
 
       console.log('✅ Upload response:', response.data);
       
-      // ===========================
-      // NEW: Handle duplicate response
-      // ===========================
       if (response.data.duplicates && response.data.duplicates.length > 0) {
         setDuplicates(response.data.duplicates);
         setLoading(false);
-        // Stay on current step to show duplicate resolution UI
         return;
       }
       
-      if (response.data.stats.failed > 0) {
-        alert(`⚠️ Upload completed with warnings:\n✅ ${response.data.stats.successful} apple(s) uploaded\n❌ ${response.data.stats.failed} failed\n\nCheck console for details.`);
-        console.log('Failed items:', response.data.errors);
+      if (response.data.results) {
+        const { inserted, updated, skipped, duplicates: dupCount, errors } = response.data.results;
+        alert(`🎉 Upload Complete!\n\n✅ Inserted: ${inserted}\n🔄 Updated: ${updated}\n⏭️ Skipped: ${skipped}\n🔁 Duplicates: ${dupCount}\n❌ Errors: ${errors?.length || 0}`);
+      } else if (response.data.stats) {
+        if (response.data.stats.failed > 0) {
+          alert(`⚠️ Upload completed with warnings:\n✅ ${response.data.stats.successful} apple(s) uploaded\n❌ ${response.data.stats.failed} failed`);
+        } else {
+          alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s)!`);
+        }
       } else {
-        alert(`🎉 Successfully uploaded ${response.data.stats.successful} apple(s) with ${response.data.stats.totalImages || 0} images!`);
+        alert('🎉 Upload completed successfully!');
       }
      
       handleBackToStart();
@@ -556,24 +761,20 @@ export default function CreateApple() {
         alert('❌ Authentication failed. Please log in again as admin.');
         navigate('/signup-login');
       } else if (err.response?.status === 400) {
-        const errorMsg = err.response?.data?.message || 'Validation error';
+        const errorMsg = err.response?.data?.message || err.response?.data?.error || 'Validation error';
         alert(`❌ Validation Error:\n${errorMsg}`);
       } else {
-        alert(`❌ Error: ${err.response?.data?.message || err.message || 'Save failed'}`);
+        alert(`❌ Error: ${err.response?.data?.message || err.response?.data?.error || err.message || 'Save failed'}`);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // ===========================
-  // NEW: Handle duplicate resolution and resubmit
-  // ===========================
   const handleResolveDuplicates = async () => {
     setLoading(true);
 
     try {
-      // Check if all duplicates have been resolved
       const unresolvedCount = duplicates.filter(
         (_, index) => !duplicateResolutions[index]
       ).length;
@@ -584,7 +785,6 @@ export default function CreateApple() {
         return;
       }
 
-      // Rebuild FormData with resolution instructions
       const finalData = [...matchedData];
       unmatchedApples.forEach((item) => {
         if (manualMatches[item.appleIndex]) {
@@ -612,18 +812,21 @@ export default function CreateApple() {
       });
 
       const formData = new FormData();
+      
+      // FIXED: Send the actual CSV/Excel file
+      formData.append('excelFile', csvFile);
+      
+      // Add duplicate resolutions
       formData.append('duplicateResolutions', JSON.stringify(duplicateResolutions));
-     
+      formData.append('handleDuplicates', 'resolve');
+      
+      // FIXED: Use 'images' field name
       finalData.forEach((item) => {
-        formData.append(`apples[${item.appleIndex}]`, JSON.stringify(item.apple));
-       
         if (item.images && item.images.length > 0) {
           item.images.forEach((img) => {
-            formData.append(`images_${item.appleIndex}`, img.blob, img.name);
+            formData.append('images', img.blob, img.name);
           });
         }
-        
-        formData.append(`imageCount[${item.appleIndex}]`, item.imageCount.toString());
       });
 
       const adminToken = localStorage.getItem('adminToken');
@@ -641,11 +844,7 @@ export default function CreateApple() {
 
       console.log('✅ Final upload response:', response.data);
       
-      alert(`🎉 Successfully processed ${response.data.stats.successful} apple(s)!\n\n` +
-        `Replaced: ${response.data.stats.replaced || 0}\n` +
-        `Duplicated: ${response.data.stats.duplicated || 0}\n` +
-        `Skipped: ${response.data.stats.skipped || 0}`
-      );
+      alert(`🎉 Successfully processed entries!\n\nCheck console for details.`);
      
       handleBackToStart();
      
@@ -660,6 +859,8 @@ export default function CreateApple() {
   return (
     <div className="create-apple-container">
       <h1 className="page-title">Create New Apple Resource 🍎</h1>
+
+      <ScrollButtons />
 
       {/* Timeline */}
       <div className="timeline">
@@ -694,16 +895,6 @@ export default function CreateApple() {
               <div className="instruction-item">
                 <strong>3. Template Creator</strong>
                 <p>Download the Excel template with all standardized fields.</p>
-              </div>
-
-              <div className="note-box">
-                <strong>📝 Template Structure:</strong>
-                <ul>
-                  <li><strong>Mandatory:</strong> ACCESSION, CULTIVAR NAME</li>
-                  <li><strong>Optional:</strong> 50+ additional standardized fields</li>
-                  <li><strong>IMAGES column:</strong> Auto-populated after upload based on actual images uploaded</li>
-                  <li><strong>Symbols:</strong> All special characters (#, &, /, etc.) fully supported!</li>
-                </ul>
               </div>
             </div>
 
@@ -743,23 +934,8 @@ export default function CreateApple() {
               <div className="instruction-item">
                 <strong>✓ Mandatory Columns:</strong>
                 <p><strong>ACCESSION</strong> - Unique identifier</p>
-                <p><strong>CULTIVAR NAME</strong> - Apple variety name (all symbols supported: #, &, /, etc.)</p>
+                <p><strong>CULTIVAR NAME</strong> - Apple variety name</p>
                 <p className="error-text">⚠️ Both required for every row!</p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ IMAGES Column:</strong>
-                <p>Not needed - will be auto-filled after upload based on actual images</p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ Duplicate Detection:</strong>
-                <p>System will check if apples already exist and ask what you want to do</p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ Validation:</strong>
-                <p>All rows with missing fields will be listed before upload</p>
               </div>
             </div>
 
@@ -801,30 +977,12 @@ export default function CreateApple() {
              
               <div className="instruction-item">
                 <strong>✓ Recommended - Use ACCESSION:</strong>
-                <p><code>MAL0100.jpg</code> or <code>MAL0100_1.jpg</code>, <code>MAL0100_2.jpg</code></p>
-                <p className="success-text">✅ Works with ALL cultivar names, including special characters!</p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ Alternative - Clean Cultivar Name:</strong>
-                <p>For "Heyer #6": <code>MAL0100_Heyer_6.jpg</code> (replace # with _)</p>
-                <p>For "King": <code>MAL0101_King.jpg</code></p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ Symbol Handling:</strong>
-                <p>System automatically handles all symbols (#, &, /, etc.) in matching</p>
-              </div>
-
-              <div className="instruction-item">
-                <strong>✓ Supported Formats:</strong>
-                <p>JPG, JPEG, PNG, GIF, BMP, WEBP</p>
+                <p><code>MAL0100.jpg</code> or <code>MAL0100_1.jpg</code></p>
               </div>
             </div>
 
             <div className="info-box">
               <p>✓ File uploaded: {csvData.length} cultivars loaded</p>
-              <p>✓ All mandatory fields validated</p>
             </div>
 
             <input type="file" accept=".zip" onChange={handleZipChange} />
@@ -855,14 +1013,12 @@ export default function CreateApple() {
         {/* STEP 3: REVIEW & SAVE */}
         {step === 3 && (
           <div className="step">
-            {/* Show duplicate resolution if duplicates exist */}
             {duplicates.length > 0 ? (
               <div>
                 <h2><AlertCircle size={28} style={{ color: '#f59e0b' }} /> Duplicates Found</h2>
                 
                 <div className="info-box" style={{ background: '#fef3c7', borderColor: '#f59e0b', marginBottom: '20px' }}>
                   <p><strong>⚠️ Found {duplicates.length} apple(s) that already exist in the database.</strong></p>
-                  <p>Please choose what to do with each duplicate:</p>
                 </div>
 
                 <div className="duplicates-list">
@@ -876,14 +1032,10 @@ export default function CreateApple() {
                     }}>
                       <div style={{ marginBottom: '12px' }}>
                         <strong>{dup.accession} - {dup.cultivar_name}</strong>
-                        <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
-                          Already exists in database (uploaded: {new Date(dup.createdAt).toLocaleDateString()})
-                        </p>
                       </div>
                       
                       <div className="duplicate-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <button
-                          className={`duplicate-btn ${duplicateResolutions[index] === 'replace' ? 'selected' : ''}`}
                           onClick={() => handleDuplicateResolution(index, 'replace')}
                           style={{
                             padding: '8px 16px',
@@ -903,7 +1055,6 @@ export default function CreateApple() {
                         </button>
                         
                         <button
-                          className={`duplicate-btn ${duplicateResolutions[index] === 'duplicate' ? 'selected' : ''}`}
                           onClick={() => handleDuplicateResolution(index, 'duplicate')}
                           style={{
                             padding: '8px 16px',
@@ -923,7 +1074,6 @@ export default function CreateApple() {
                         </button>
                         
                         <button
-                          className={`duplicate-btn ${duplicateResolutions[index] === 'skip' ? 'selected' : ''}`}
                           onClick={() => handleDuplicateResolution(index, 'skip')}
                           style={{
                             padding: '8px 16px',
@@ -955,7 +1105,7 @@ export default function CreateApple() {
                     onClick={handleResolveDuplicates}
                     disabled={loading}
                   >
-                    {loading ? '⏳ Processing...' : <>✓ Proceed with Selections</>}
+                    {loading ? '⏳ Processing...' : <>✓ Proceed</>}
                   </button>
                 </div>
               </div>
@@ -963,7 +1113,6 @@ export default function CreateApple() {
               <div>
                 <h2><CheckCircle size={28} /> Review and Save</h2>
            
-                {/* Statistics */}
                 <div className="stats-grid">
                   <div className="stat-card success">
                     <div className="stat-number">{stats.matched}</div>
@@ -979,31 +1128,26 @@ export default function CreateApple() {
                   </div>
                 </div>
 
-                {/* Manual Matching */}
                 {unmatchedApples.length > 0 && (
                   <div className="manual-matching-section">
-                    <h3><AlertCircle size={20} /> Manual Matching</h3>
-                    <p>Select images for these cultivars (or leave blank):</p>
+                    <h3><AlertCircle size={20} /> Manual Matching ({unmatchedApples.length} items)</h3>
                
                     {unmatchedApples.map((item) => (
-                      <div key={item.appleIndex} className="match-item">
-                        <strong>{item.accessionNumber} - {item.cultivarName}</strong>
-                        <select
+                      <div key={item.appleIndex} className="match-item" style={{ marginBottom: '16px' }}>
+                        <strong style={{ display: 'block', marginBottom: '8px' }}>
+                          {item.accessionNumber} - {item.cultivarName}
+                        </strong>
+                        <SearchableDropdown
+                          images={unmatchedImages}
                           value={manualMatches[item.appleIndex] || ''}
-                          onChange={(e) => handleManualMatch(item.appleIndex, e.target.value)}
-                          className="match-select"
-                        >
-                          <option value="">-- No Image (Skip) --</option>
-                          {unmatchedImages.map((img, imgIndex) => (
-                            <option key={imgIndex} value={img.name}>{img.name}</option>
-                          ))}
-                        </select>
+                          onChange={(value) => handleManualMatch(item.appleIndex, value)}
+                          placeholder="Search for image..."
+                        />
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Matched Preview */}
                 {matchedData.length > 0 && (
                   <div className="matched-preview">
                     <h3>✓ Successfully Matched ({matchedData.length})</h3>
@@ -1026,13 +1170,6 @@ export default function CreateApple() {
                     </div>
                   </div>
                 )}
-            
-                <div className="info-box" style={{ marginTop: '20px' }}>
-                  <p><strong>ℹ️ Ready to save:</strong></p>
-                  <p>• {matchedData.reduce((sum, item) => sum + item.imageCount, 0)} total images matched</p>
-                  <p>• {matchedData.length + unmatchedApples.length} total apples</p>
-                  <p>• IMAGES column will be auto-populated based on actual uploaded images</p>
-                </div>
 
                 <div className="navigation-buttons">
                   <button className="btn-secondary" onClick={handleBackToStart}>
