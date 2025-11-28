@@ -113,12 +113,18 @@ almostfinalapple2.0/
 │   │   ├── authRoutes.js     # User authentication
 │   │   ├── passwordlessAuthRoutes.js # Password recovery
 │   │   └── settingsRoutes.js # User settings
-│   ├── scripts/              # Utility scripts
+│   ├── scripts/              # Utility and maintenance scripts
+│   │   └── linkImagesToApples_CORRECTED.js # Image linking utility
 │   ├── tests/                # Backend test suites
-│   │   ├── admin.test.js     # Admin functionality tests
-│   │   └── auth.test.js      # Authentication tests
-│   ├── server.js             # Main server file
-│   └── package.json          # Backend dependencies
+│   ├── .env                          # Environment variables
+│   ├── adminHandler.js               # Admin-specific business logic
+│   ├── authRoutes.js                 # Additional auth route handlers
+│   ├── createadmin.js                # Admin creation utility
+│   ├── dataHandler.js                # Data processing utilities
+│   ├── package.json                  # Backend dependencies
+│   ├── replaceDataset.js             # Dataset replacement utility
+│   ├── server.js                     # Main server entry point
+│   └── signupHandler.js              # User signup processing
 ├── frontend/                  # Client-side application
 │   ├── public/               # Static assets
 │   ├── src/
@@ -132,8 +138,9 @@ almostfinalapple2.0/
 │   │   │   ├── CreateApple.js       # Apple creation form
 │   │   │   ├── LibraryV2.jsx        # Apple library browser
 │   │   │   ├── Settings.js          # User settings
-│   │   │   └── [6+ more pages]
+│   │   │   └── [8+ more pages]
 │   │   ├── services/         # API service layers
+│   │   │   ├── tests/                # Frontend test suites
 │   │   │   ├── authService.js       # Authentication API
 │   │   │   ├── adminService.js      # Admin API
 │   │   │   └── passwordlessAuthService.js
@@ -303,7 +310,7 @@ DELETE /api/apples/:id/images/:imageId # Delete specific image
 
 ## 🗄 Database Schema
 
-### Apple Model (100+ Fields)
+### Apple Model (54 Fields)
 The Apple model includes comprehensive fields for:
 
 #### Core Identification
@@ -425,3 +432,4 @@ For support, questions, or contributions:
 
 
 ---
+
